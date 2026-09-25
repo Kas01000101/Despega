@@ -3034,6 +3034,7 @@ main{width:100%;height:100%}
     // Cuando despliegues Kokoro, coloca aquí su endpoint, p. ej. https://tts.example.com/synthesize
     kokoroTtsUrl: '',
     maxRecordingSeconds: 30,
+    minRecordingMs: 800,
     maxInterviewQuestions: 7,
     targetInterviewQuestions: 4,
     minInterviewQuestions: 3
@@ -3167,6 +3168,8 @@ main{width:100%;height:100%}
     if (!views[step]) return;
 
     const previous = currentStep;
+    if (previous === 'step3' && step !== 'step3') cleanupNova();
+
     const previousIndex = flowOrder.indexOf(previous);
     const nextIndex = flowOrder.indexOf(step);
     const direction = nextIndex >= previousIndex ? 'forward' : 'back';
@@ -3203,7 +3206,13 @@ main{width:100%;height:100%}
     if (step === 'analysis') startAnalysisLoading();
     else stopAnalysisLoading();
 
-    if (step === 'step3') window.setTimeout(enterStep3Agent, 380);
+    if (step === 'step3') {
+      clearTimeout(interview.enterTimer);
+      interview.enterTimer = window.setTimeout(() => {
+        interview.enterTimer = null;
+        if (currentStep === 'step3') enterStep3Agent();
+      }, 380);
+    }
 
     window.scrollTo(0, 0);
   }
@@ -3514,6 +3523,7 @@ main{width:100%;height:100%}
   const interview = {
     sessionId: localStorage.getItem('despegaInterviewSession') || (crypto.randomUUID?.() || `session-${Date.now()}`),
     answersCount: Number(localStorage.getItem('despegaInterviewAnswers') || 0),
+    usefulAnswersCount: Number(localStorage.getItem('despegaInterviewUsefulAnswers') || 0),
     questionId: localStorage.getItem('despegaCurrentQuestionId') || 'goal',
     currentQuestion: localStorage.getItem('despegaCurrentQuestion') || INITIAL_QUESTION,
     currentExample: localStorage.getItem('despegaCurrentExample') || INITIAL_EXAMPLE,
@@ -3532,9 +3542,17 @@ main{width:100%;height:100%}
     mediaStream: null,
     chunks: [],
     startedAt: 0,
+    lastRecordingDurationMs: 0,
+    recordingState: 'idle',
     stopRequested: false,
     maxTimer: null,
     durationTimer: null,
+    requestController: null,
+    requestTimeout: null,
+    continuationTimer: null,
+    continuationResolve: null,
+    enterTimer: null,
+    lifecycleId: 0,
     isProcessing: false,
     welcomePlayed: sessionStorage.getItem('despegaAgentWelcomed') === (localStorage.getItem('despegaInterviewSession') || ''),
     agentState: 'idle'
@@ -3607,11 +3625,14 @@ main{width:100%;height:100%}
   }
 
   async function enterStep3Agent() {
+    if (currentStep !== 'step3') return;
     refreshAgentIdentity();
     refreshInterviewUI();
-    if (recordCaption && interview.mediaRecorder?.state !== 'recording') recordCaption.textContent = 'Toca una vez para responder';
-    if (recordHelper && interview.mediaRecorder?.state !== 'recording') recordHelper.textContent = 'El micrófono seguirá activo hasta que vuelvas a tocarlo.';
+    if (recordCaption && interview.recordingState !== 'recording') recordCaption.textContent = 'Toca una vez para responder';
+    if (recordHelper && interview.recordingState !== 'recording') recordHelper.textContent = 'El micrófono se activa únicamente cuando tocas el botón.';
+    if (recordAnswerButton) recordAnswerButton.disabled = !navigator.onLine && interview.isProcessing;
     if (interview.welcomePlayed || interview.answersCount > 0 || interview.isProcessing) return;
+
     interview.welcomePlayed = true;
     sessionStorage.setItem('despegaAgentWelcomed', interview.sessionId);
     const name = getInterviewFirstName();
@@ -3712,12 +3733,23 @@ main{width:100%;height:100%}
     };
   }
 
+  function evidenceKey(item) {
+    if (typeof item === 'string') return item.trim().toLowerCase();
+    if (!item || typeof item !== 'object') return '';
+    return String(
+      item.value || item.subcategory || item.category || item.description || item.name || ''
+    ).trim().toLowerCase();
+  }
+
   function mergeByEvidence(target = [], incoming = []) {
     const result = Array.isArray(target) ? [...target] : [];
+    const seen = new Set(result.map(evidenceKey).filter(Boolean));
+
     for (const item of (Array.isArray(incoming) ? incoming : [])) {
-      const key = JSON.stringify([item?.category || '', item?.subcategory || '', item?.value || item?.description || '']).toLowerCase();
-      const exists = result.some(existing => JSON.stringify([existing?.category || '', existing?.subcategory || '', existing?.value || existing?.description || '']).toLowerCase() === key);
-      if (!exists && key !== '["","",""]') result.push(item);
+      const key = evidenceKey(item);
+      if (!key || seen.has(key)) continue;
+      result.push(item);
+      seen.add(key);
     }
     return result;
   }
@@ -3772,7 +3804,6 @@ main{width:100%;height:100%}
       novaReaction: String(result?.control_response || result?.nova_reaction || '').trim()
     });
 
-    setInterviewBusy(false);
     aiConfirmation.hidden = true;
     micPanel.hidden = false;
     setAgentEmotion(intent === 'pause' ? 'calm' : 'happy');
@@ -3847,9 +3878,66 @@ main{width:100%;height:100%}
     if ('speechSynthesis' in window) speechSynthesis.cancel();
     exampleAudioCard?.classList.remove('playing');
     speakerPromptButton?.classList.remove('speaking');
-    if (interview.mediaRecorder?.state === 'recording') setAgentState('listening');
-    else if (!interview.isProcessing) setAgentState('idle');
+    if (currentStep === 'step3') {
+      if (interview.mediaRecorder?.state === 'recording') setAgentState('listening');
+      else if (!interview.isProcessing) setAgentState('idle');
+    }
   }
+
+  function releaseMicrophone() {
+    interview.mediaStream?.getTracks?.().forEach(track => {
+      try { track.stop(); } catch {}
+    });
+    interview.mediaStream = null;
+  }
+
+  function cleanupNova() {
+    interview.lifecycleId += 1;
+
+    clearTimeout(interview.enterTimer);
+    clearTimeout(interview.maxTimer);
+    clearInterval(interview.durationTimer);
+    clearTimeout(interview.continuationTimer);
+    interview.enterTimer = null;
+    interview.maxTimer = null;
+    interview.durationTimer = null;
+    interview.continuationTimer = null;
+
+    if (typeof interview.continuationResolve === 'function') {
+      interview.continuationResolve(false);
+      interview.continuationResolve = null;
+    }
+
+    if (interview.requestTimeout) clearTimeout(interview.requestTimeout);
+    interview.requestTimeout = null;
+    interview.requestController?.abort();
+    interview.requestController = null;
+
+    if (interview.mediaRecorder && interview.mediaRecorder.state !== 'inactive') {
+      interview.mediaRecorder.ondataavailable = null;
+      interview.mediaRecorder.onstop = null;
+      try { interview.mediaRecorder.stop(); } catch {}
+    }
+
+    interview.mediaRecorder = null;
+    interview.recordingState = 'idle';
+    interview.stopRequested = false;
+    interview.chunks = [];
+    releaseMicrophone();
+
+    interview.isProcessing = false;
+    interview.pendingResult = null;
+    stopSpeaking();
+
+    recordAnswerButton?.classList.remove('recording');
+    recordAnswerButton?.setAttribute('aria-pressed', 'false');
+    if (recordAnswerButton) recordAnswerButton.disabled = false;
+    setAgentState('idle');
+
+    console.log('[NOVA] cleanup complete');
+  }
+
+  async function kokoroSpeak
 
   async function kokoroSpeak(text) {
     if (!DESPEGA_AI.kokoroTtsUrl) return false;
@@ -3887,22 +3975,37 @@ main{width:100%;height:100%}
   }
 
   async function speakText(text, markExample = false) {
+    const message = String(text || '').trim();
+    if (!message || currentStep !== 'step3') return false;
+
+    const lifecycle = interview.lifecycleId;
     stopSpeaking();
+    if (currentStep !== 'step3' || lifecycle !== interview.lifecycleId) return false;
+
     setAgentState('speaking');
     speakerPromptButton?.classList.add('speaking');
     if (markExample) exampleAudioCard?.classList.add('playing');
+
     try {
-      const usedKokoro = await kokoroSpeak(text).catch(() => false);
-      if (!usedKokoro) await browserSpeak(text);
+      const usedKokoro = await kokoroSpeak(message).catch(() => false);
+      if (!usedKokoro && currentStep === 'step3' && lifecycle === interview.lifecycleId) {
+        await browserSpeak(message);
+      }
     } catch (error) {
-      showToast('No se pudo reproducir el audio en este navegador.');
+      if (currentStep === 'step3' && lifecycle === interview.lifecycleId) {
+        showToast('No se pudo reproducir el audio en este navegador.');
+      }
     } finally {
       exampleAudioCard?.classList.remove('playing');
       speakerPromptButton?.classList.remove('speaking');
-      if (interview.mediaRecorder?.state === 'recording') setAgentState('listening');
-      else if (interview.isProcessing) setAgentState('thinking');
-      else setAgentState('idle');
+      if (currentStep === 'step3' && lifecycle === interview.lifecycleId) {
+        if (interview.mediaRecorder?.state === 'recording') setAgentState('listening');
+        else if (interview.isProcessing) setAgentState('thinking');
+        else setAgentState('idle');
+      }
     }
+
+    return currentStep === 'step3' && lifecycle === interview.lifecycleId;
   }
 
   playExampleButton?.addEventListener('click', () => {
@@ -3916,20 +4019,32 @@ main{width:100%;height:100%}
 
   // -------- Gemini via Supabase Edge Function --------
   async function callDespegaAI(audioBlob, metadata) {
+    interview.requestController?.abort();
+    if (interview.requestTimeout) clearTimeout(interview.requestTimeout);
+
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 45000);
+    interview.requestController = controller;
+    interview.requestTimeout = setTimeout(() => controller.abort(), 45000);
+
     const form = new FormData();
     form.append('audio', audioBlob, `despega-${Date.now()}.${audioBlob.type.includes('ogg') ? 'ogg' : audioBlob.type.includes('mp4') ? 'm4a' : 'webm'}`);
     const requestMeta = metadata || {};
     form.append('session_id', requestMeta.sessionId || interview.sessionId);
     form.append('question_id', requestMeta.questionId || interview.questionId);
     form.append('question', requestMeta.question || interview.currentQuestion);
-    form.append('answers_count', String(Number.isFinite(requestMeta.answersCount) ? requestMeta.answersCount : interview.answersCount));
+    form.append('answers_count', String(Number.isFinite(requestMeta.usefulAnswersCount) ? requestMeta.usefulAnswersCount : interview.usefulAnswersCount));
+    form.append('turns_count', String(Number.isFinite(requestMeta.answersCount) ? requestMeta.answersCount : interview.answersCount));
     form.append('target_questions', String(DESPEGA_AI.targetInterviewQuestions));
     form.append('hard_cap_questions', String(DESPEGA_AI.maxInterviewQuestions));
     form.append('profile', JSON.stringify(requestMeta.profile || { ...loadPriorProfile(), ...interview.profile }));
     form.append('conversation_history', JSON.stringify((requestMeta.conversationHistory || interview.conversationHistory || []).slice(-10)));
     form.append('current_example', requestMeta.currentExample || interview.currentExample || '');
+
+    console.log('[NOVA] sending to Supabase', {
+      questionId: requestMeta.questionId || interview.questionId,
+      bytes: audioBlob.size,
+      usefulAnswers: Number.isFinite(requestMeta.usefulAnswersCount) ? requestMeta.usefulAnswersCount : interview.usefulAnswersCount
+    });
 
     try {
       const response = await fetch(`${DESPEGA_AI.supabaseUrl}/functions/v1/${DESPEGA_AI.functionName}`, {
@@ -3941,12 +4056,17 @@ main{width:100%;height:100%}
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
         const error = new Error(payload.message || payload.error || `Backend ${response.status}`);
-        error.code = payload.code || `HTTP_${response.status}`;
+        error.code = payload.code || payload.error || `HTTP_${response.status}`;
         throw error;
       }
+      console.log('[NOVA] Gemini result', payload);
       return payload;
     } finally {
-      clearTimeout(timeout);
+      if (interview.requestController === controller) {
+        if (interview.requestTimeout) clearTimeout(interview.requestTimeout);
+        interview.requestTimeout = null;
+        interview.requestController = null;
+      }
     }
   }
 
@@ -3955,93 +4075,220 @@ main{width:100%;height:100%}
     return candidates.find(type => MediaRecorder.isTypeSupported?.(type)) || '';
   }
 
+  function microphoneError(code, message, cause) {
+    const error = new Error(message);
+    error.code = code;
+    if (cause) error.cause = cause;
+    return error;
+  }
+
+  function validateAudioTrack(stream) {
+    const track = stream?.getAudioTracks?.()[0];
+    if (!track) throw microphoneError('MIC_NOT_FOUND', 'No encontramos un micrófono disponible.');
+    if (!track.enabled || track.readyState !== 'live') {
+      throw microphoneError('MIC_TRACK_INACTIVE', 'El micrófono dejó de estar disponible. Vuelve a activarlo para continuar.');
+    }
+    return track;
+  }
+
   async function ensureMicrophone() {
     if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
-      throw new Error('Tu navegador no permite grabar audio con MediaRecorder.');
+      throw microphoneError('MIC_UNSUPPORTED', 'Tu navegador no permite grabar audio con MediaRecorder.');
     }
     if (!window.isSecureContext) {
-      throw new Error('El micrófono necesita HTTPS o localhost. Abre DESPEGA desde un servidor local o desde Netlify/Vercel.');
+      throw microphoneError('MIC_INSECURE_CONTEXT', 'El micrófono necesita HTTPS o localhost.');
     }
-    if (interview.mediaStream?.active) return interview.mediaStream;
-    interview.mediaStream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
-    });
-    return interview.mediaStream;
+
+    if (interview.mediaStream?.active) {
+      try {
+        validateAudioTrack(interview.mediaStream);
+        return interview.mediaStream;
+      } catch {
+        releaseMicrophone();
+      }
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+      });
+      const track = validateAudioTrack(stream);
+      track.addEventListener('ended', () => {
+        if (currentStep === 'step3' && interview.recordingState === 'recording') {
+          setVoiceStatus('El micrófono dejó de estar disponible. Vuelve a activarlo para continuar.', 'error');
+          stopRealRecording();
+        }
+      }, { once: true });
+      interview.mediaStream = stream;
+      console.log('[NOVA] microphone granted', {
+        enabled: track.enabled,
+        muted: track.muted,
+        readyState: track.readyState
+      });
+      return stream;
+    } catch (error) {
+      if (error?.code) throw error;
+      if (error?.name === 'NotAllowedError' || error?.name === 'SecurityError') {
+        throw microphoneError('MIC_PERMISSION_DENIED', 'Necesitamos permiso para usar el micrófono. Actívalo en la configuración del navegador.', error);
+      }
+      if (error?.name === 'NotFoundError' || error?.name === 'DevicesNotFoundError') {
+        throw microphoneError('MIC_NOT_FOUND', 'No encontramos un micrófono disponible.', error);
+      }
+      throw microphoneError('MIC_ACCESS_FAILED', 'No pudimos acceder al micrófono. Revisa el dispositivo e inténtalo nuevamente.', error);
+    }
   }
+
+  async function startRealRecording
 
   async function startRealRecording(event) {
     event?.preventDefault();
-    if (interview.isProcessing || interview.mediaRecorder?.state === 'recording') return;
+    if (currentStep !== 'step3' || interview.isProcessing) return;
+    if (interview.recordingState !== 'idle') return;
+
+    interview.recordingState = 'starting';
     interview.stopRequested = false;
+    interview.lastRecordingDurationMs = 0;
     stopSpeaking();
     aiConfirmation.hidden = true;
+    if (recordAnswerButton) recordAnswerButton.disabled = true;
 
     try {
       setVoiceStatus('Solicitando acceso al micrófono…', 'processing');
       const stream = await ensureMicrophone();
+      if (currentStep !== 'step3') {
+        releaseMicrophone();
+        interview.recordingState = 'idle';
+        return;
+      }
+
+      validateAudioTrack(stream);
       const mimeType = pickRecordingMimeType();
       interview.chunks = [];
       interview.mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
-      interview.mediaRecorder.ondataavailable = e => { if (e.data?.size) interview.chunks.push(e.data); };
+
+      interview.mediaRecorder.ondataavailable = event => {
+        if (event.data && event.data.size > 0) {
+          interview.chunks.push(event.data);
+          console.log('[NOVA] audio chunk bytes:', event.data.size);
+        }
+      };
       interview.mediaRecorder.onstop = processRecordedAudio;
-      interview.mediaRecorder.start(250);
+      interview.mediaRecorder.onerror = event => {
+        console.error('[NOVA AUDIO]', event?.error || event);
+      };
+
+      interview.mediaRecorder.start();
       interview.startedAt = Date.now();
+      interview.recordingState = 'recording';
+
       recordAnswerButton?.classList.add('recording');
       recordAnswerButton?.setAttribute('aria-pressed', 'true');
       recordAnswerButton?.setAttribute('aria-label', 'Toca otra vez para terminar y enviar tu respuesta');
+      if (recordAnswerButton) recordAnswerButton.disabled = false;
       if (recordCaption) recordCaption.textContent = 'Te escucho… toca otra vez para terminar';
-      if (recordHelper) recordHelper.textContent = 'Puedes hablar con calma. Al terminar, toca el micrófono otra vez.';
-      setAgentState('listening');      setVoiceStatus('Grabando… 0:00', 'processing');
+      if (recordHelper) recordHelper.textContent = 'Habla con calma y toca el micrófono otra vez cuando termines.';
+      setAgentState('listening');
+      setVoiceStatus('Grabando… 0:00', 'processing');
+      console.log('[NOVA] recorder started', interview.mediaRecorder.mimeType);
 
       interview.durationTimer = setInterval(() => {
         const seconds = (Date.now() - interview.startedAt) / 1000;
         setVoiceStatus(`Grabando… ${formatSecondsToClock(seconds)}`, 'processing');
       }, 250);
       interview.maxTimer = setTimeout(stopRealRecording, DESPEGA_AI.maxRecordingSeconds * 1000);
-      if (interview.stopRequested) stopRealRecording();
     } catch (error) {
+      interview.recordingState = 'idle';
+      releaseMicrophone();
+      if (recordAnswerButton) recordAnswerButton.disabled = false;
       recordAnswerButton?.classList.remove('recording');
+      setAgentState('error');
       setVoiceStatus(error.message || 'No pudimos acceder al micrófono.', 'error');
+      console.error('[NOVA AUDIO]', error);
     }
   }
 
   function stopRealRecording() {
+    if (interview.recordingState !== 'recording' || interview.mediaRecorder?.state !== 'recording') {
+      interview.stopRequested = true;
+      return;
+    }
+
+    interview.recordingState = 'stopping';
     interview.stopRequested = true;
-    if (interview.mediaRecorder?.state === 'recording') interview.mediaRecorder.stop();
+    interview.lastRecordingDurationMs = Math.max(0, Date.now() - interview.startedAt);
+
     clearTimeout(interview.maxTimer);
     clearInterval(interview.durationTimer);
     interview.maxTimer = null;
     interview.durationTimer = null;
+
+    if (recordAnswerButton) recordAnswerButton.disabled = true;
     recordAnswerButton?.classList.remove('recording');
     recordAnswerButton?.setAttribute('aria-pressed', 'false');
-    recordAnswerButton?.setAttribute('aria-label', 'Toca una vez para comenzar a responder con tu voz');
+    recordAnswerButton?.setAttribute('aria-label', 'Procesando tu respuesta');
+
+    try { interview.mediaRecorder.requestData?.(); } catch {}
+    try { interview.mediaRecorder.stop(); } catch (error) {
+      console.error('[NOVA AUDIO]', error);
+      interview.recordingState = 'idle';
+      releaseMicrophone();
+      if (recordAnswerButton) recordAnswerButton.disabled = false;
+    }
+
     if (recordCaption) recordCaption.textContent = 'Procesando tu respuesta…';
     if (recordHelper) recordHelper.textContent = 'Nova está entendiendo lo que le contaste.';
     setAgentState('thinking');
+    console.log('[NOVA] recorder stopped', { durationMs: interview.lastRecordingDurationMs });
   }
 
   function toggleRealRecording(event) {
     event?.preventDefault();
-    if (interview.isProcessing) return;
-    if (interview.mediaRecorder?.state === 'recording') stopRealRecording();
-    else startRealRecording(event);
+    if (currentStep !== 'step3' || interview.isProcessing) return;
+    if (interview.recordingState === 'starting' || interview.recordingState === 'stopping') return;
+    if (interview.recordingState === 'recording') stopRealRecording();
+    else if (interview.recordingState === 'idle') startRealRecording(event);
   }
 
+  async function processRecordedAudio
+
   async function processRecordedAudio() {
-    const type = interview.mediaRecorder?.mimeType || interview.chunks[0]?.type || 'audio/webm';
+    const recorder = interview.mediaRecorder;
+    const type = recorder?.mimeType || interview.chunks[0]?.type || 'audio/webm';
     const blob = new Blob(interview.chunks, { type });
+    const durationMs = interview.lastRecordingDurationMs || Math.max(0, Date.now() - interview.startedAt);
+
     interview.chunks = [];
-    if (!blob.size) {
+    interview.mediaRecorder = null;
+    interview.recordingState = 'idle';
+    releaseMicrophone();
+
+    console.log('[NOVA] audio ready', {
+      bytes: blob.size,
+      mimeType: blob.type,
+      durationMs
+    });
+
+    if (currentStep !== 'step3') return;
+
+    if (durationMs < DESPEGA_AI.minRecordingMs) {
+      setInterviewBusy(false);
       setAgentState('idle');
-      if (recordCaption) recordCaption.textContent = 'Toca una vez para responder';
-      if (recordHelper) recordHelper.textContent = 'El micrófono seguirá activo hasta que vuelvas a tocarlo.';
-      setVoiceStatus('No detectamos audio. Inténtalo otra vez.', 'error');
+      resetForRecording();
+      setVoiceStatus('La grabación fue demasiado corta. Habla un momento y vuelve a tocar el micrófono para terminar.', 'error');
+      return;
+    }
+
+    if (!blob.size) {
+      setInterviewBusy(false);
+      setAgentState('error');
+      resetForRecording();
+      setVoiceStatus('La grabación no pudo generarse correctamente. Inténtalo otra vez.', 'error');
       return;
     }
 
     setInterviewBusy(true);
     setAgentState('thinking');
-    setVoiceStatus('Entendiendo tu respuesta…', 'processing');
+    setVoiceStatus('Nova está entendiendo tu respuesta…', 'processing');
 
     const queueItem = {
       id: crypto.randomUUID?.() || `voice-${Date.now()}`,
@@ -4049,6 +4296,7 @@ main{width:100%;height:100%}
       questionId: interview.questionId,
       question: interview.currentQuestion,
       answersCount: interview.answersCount,
+      usefulAnswersCount: interview.usefulAnswersCount,
       profile: { ...loadPriorProfile(), ...interview.profile },
       conversationHistory: (interview.conversationHistory || []).slice(-10),
       currentExample: interview.currentExample || '',
@@ -4061,33 +4309,72 @@ main{width:100%;height:100%}
     if (!navigator.onLine) {
       try { await idbPutVoice(queueItem); } catch {}
       setInterviewBusy(false);
+      setAgentState('paused');
       setVoiceStatus('Respuesta guardada en este dispositivo. La procesaremos cuando vuelva tu conexión.', 'ok');
+      if (recordCaption) recordCaption.textContent = 'Esperando conexión…';
+      if (recordHelper) recordHelper.textContent = 'Tu respuesta ya está guardada; no necesitas grabarla de nuevo.';
+      if (recordAnswerButton) recordAnswerButton.disabled = true;
       return;
     }
 
+    let queuedForRetry = false;
     try {
       const result = await callDespegaAI(blob, queueItem);
-      receiveAIResult(result);
+      if (currentStep !== 'step3') return;
+      await receiveAIResult(result);
     } catch (error) {
-      try { await idbPutVoice(queueItem); } catch {}
-      const msg = error.code === 'GEMINI_NOT_CONFIGURED'
-        ? 'El backend ya está preparado, pero falta configurar GEMINI_API_KEY en Supabase.'
-        : 'No pudimos procesar ahora. Guardamos tu audio en este dispositivo para reintentarlo.';
-      setVoiceStatus(msg, error.code === 'GEMINI_NOT_CONFIGURED' ? 'error' : 'ok');
+      if (error?.name === 'AbortError') {
+        console.log('[NOVA] request aborted');
+        return;
+      }
+
+      console.error('[NOVA API]', error);
+      const networkFailure = !navigator.onLine || error instanceof TypeError;
+      if (networkFailure) {
+        try {
+          await idbPutVoice(queueItem);
+          queuedForRetry = true;
+        } catch {}
+      }
+
+      if (currentStep === 'step3') {
+        if (error.code === 'GEMINI_NOT_CONFIGURED') {
+          setVoiceStatus('Falta configurar GEMINI_API_KEY en Supabase.', 'error');
+        } else if (queuedForRetry) {
+          setVoiceStatus('Se perdió la conexión. Guardamos tu audio para reintentarlo automáticamente.', 'ok');
+        } else {
+          setVoiceStatus(error.message || 'No pudimos procesar la respuesta. Inténtalo nuevamente.', 'error');
+        }
+      }
     } finally {
-      setInterviewBusy(false);
+      if (currentStep === 'step3') {
+        setInterviewBusy(false);
+        if (queuedForRetry) {
+          setAgentState('paused');
+          if (recordAnswerButton) recordAnswerButton.disabled = true;
+        }
+      }
     }
+  }
+
+  function insightText(item) {
+    if (typeof item === 'string') return item.trim();
+    if (!item || typeof item !== 'object') return '';
+    return String(item.value || item.subcategory || item.category || item.description || item.name || '').trim();
   }
 
   function renderInsights(result) {
     if (!aiInsights) return;
     aiInsights.innerHTML = '';
     const labels = [];
-    const add = (prefix, items, extractor) => (items || []).slice(0, 2).forEach(item => labels.push(`${prefix}: ${extractor(item)}`));
-    add('Objetivo', result.goals, x => x.value);
-    add('Interés', result.interests, x => x.subcategory || x.category);
-    add('Habilidad', result.skills, x => x.value);
-    add('Barrera', result.barriers, x => x.value || x.category);
+    const add = (prefix, items) => (Array.isArray(items) ? items : []).slice(0, 2).forEach(item => {
+      const value = insightText(item);
+      if (value) labels.push(`${prefix}: ${value}`);
+    });
+    add('Objetivo', result.goals);
+    add('Interés', result.interests);
+    add('Habilidad', result.skills);
+    add('Barrera', result.barriers);
     labels.slice(0, 5).forEach(label => {
       const chip = document.createElement('span');
       chip.className = 'ai-insight-chip';
@@ -4122,11 +4409,20 @@ main{width:100%;height:100%}
   }
 
   async function advanceInterviewAutomatically(result) {
+    if (currentStep !== 'step3') return;
+
     interview.answersCount += 1;
     localStorage.setItem('despegaInterviewAnswers', String(interview.answersCount));
 
+    const sufficiency = String(result?.answer_sufficiency || 'sufficient').toLowerCase();
+    if (sufficiency === 'sufficient') {
+      interview.usefulAnswersCount += 1;
+      localStorage.setItem('despegaInterviewUsefulAnswers', String(interview.usefulAnswersCount));
+    }
+
     const reachedHardCap = interview.answersCount >= DESPEGA_AI.maxInterviewQuestions;
-    const finish = Boolean(result?.should_finish) || reachedHardCap;
+    const hasMinimumUseful = interview.usefulAnswersCount >= DESPEGA_AI.minInterviewQuestions;
+    const finish = reachedHardCap || (Boolean(result?.should_finish) && hasMinimumUseful);
 
     if (finish) {
       const finalMessage = String(result?.final_message || 'Perfecto. Ya tengo suficiente información para preparar una ruta pensada para ti.').trim();
@@ -4134,13 +4430,16 @@ main{width:100%;height:100%}
       setAgentState('celebrating');
       if (aiAutoNext) aiAutoNext.textContent = 'Nova ya tiene lo necesario para preparar tu ruta.';
       await speakText(finalMessage, false);
+      if (currentStep !== 'step3') return;
+
       safeSave('despegaRegisterStep3', {
         responseMode: 'adaptive_voice_ai',
         answersCount: interview.answersCount,
+        usefulAnswersCount: interview.usefulAnswersCount,
         profile: interview.profile,
         missingDimensions: result?.missing_dimensions || []
       });
-      window.setTimeout(() => goTo('analysis'), reduceMotion ? 0 : 450);
+      goTo('analysis');
       return;
     }
 
@@ -4154,10 +4453,6 @@ main{width:100%;height:100%}
     localStorage.setItem('despegaCurrentQuestion', interview.currentQuestion);
     localStorage.setItem('despegaCurrentExample', interview.currentExample);
 
-    const reaction = String(result?.nova_reaction || (followUp.clarification
-      ? 'Está bien. Solo necesito un poquito más de información para poder orientarte mejor.'
-      : '¡Genial! Gracias por contármelo. Sigamos.')).trim();
-
     if (followUp.clarification) {
       setAgentEmotion('curious');
       if (aiAutoNext) aiAutoNext.textContent = 'Nova necesita un poquito más de información y continuará sola…';
@@ -4167,11 +4462,14 @@ main{width:100%;height:100%}
     }
 
     await speakText(interview.currentQuestion, false);
+    if (currentStep !== 'step3') return;
     resetForRecording();
     refreshInterviewUI();
   }
 
   async function receiveAIResult(result) {
+    if (currentStep !== 'step3') return;
+
     if (isControlIntent(result)) {
       await handleControlIntent(result);
       return;
@@ -4190,6 +4488,7 @@ main{width:100%;height:100%}
         experience: result?.experience || [], barriers: result?.barriers || [], training_needs: result?.training_needs || []
       }
     });
+
     if (aiTranscript) aiTranscript.textContent = result.transcript || 'No recibimos una transcripción.';
     renderInsights(result);
 
@@ -4216,47 +4515,73 @@ main{width:100%;height:100%}
 
     const reaction = String(result?.nova_reaction || (needsMore
       ? 'Está bien. Para poder ayudarte mejor, necesito un poquito más de información.'
-      : '¡Genial! Gracias por contármelo.')).trim();
+      : 'Gracias por contármelo.')).trim();
 
-    // La reacción vive en Nova: no hay botón “Siguiente”.
-    await speakText(reaction, false);
-    window.setTimeout(() => advanceInterviewAutomatically(result), reduceMotion ? 0 : 300);
+    const stillActive = await speakText(reaction, false);
+    if (!stillActive || currentStep !== 'step3') return;
+
+    await advanceInterviewAutomatically(result);
   }
 
   function resetForRecording() {
+    if (currentStep !== 'step3') return;
     interview.pendingResult = null;
     aiConfirmation.hidden = true;
     micPanel.hidden = false;
     if (recordCaption) recordCaption.textContent = 'Toca una vez para responder';
-    if (recordHelper) recordHelper.textContent = 'El micrófono seguirá activo hasta que vuelvas a tocarlo.';
+    if (recordHelper) recordHelper.textContent = 'El micrófono se activa únicamente cuando tocas el botón.';
     setAgentState('idle');
     setVoiceStatus('Cuando estés listo, toca el micrófono.');
+    if (recordAnswerButton) recordAnswerButton.disabled = false;
   }
 
   recordAnswerButton?.addEventListener('click', toggleRealRecording);
 
   async function flushVoiceQueue() {
     refreshInterviewUI();
-    if (!navigator.onLine) return;
+    if (!navigator.onLine || currentStep !== 'step3' || interview.isProcessing) return;
+
     let rows = [];
     try { rows = await idbGetAllVoices(); } catch { return; }
+
     for (const row of rows) {
-      if (!row?.blob) continue;
+      if (!row?.blob) {
+        try { await idbDeleteVoice(row.id); } catch {}
+        continue;
+      }
+
+      const stale = row.sessionId !== interview.sessionId || row.questionId !== interview.questionId;
+      if (stale) {
+        try { await idbDeleteVoice(row.id); } catch {}
+        continue;
+      }
+
+      setInterviewBusy(true);
+      setAgentState('thinking');
+      setVoiceStatus('Recuperamos tu conexión. Procesando la respuesta guardada…', 'processing');
+
       try {
         const result = await callDespegaAI(row.blob, row);
         await idbDeleteVoice(row.id);
-        // Solo presentamos automáticamente el resultado si corresponde a la pregunta actual.
-        if (row.sessionId === interview.sessionId && row.questionId === interview.questionId && currentStep === 'step3') {
-          receiveAIResult(result);
+        if (currentStep === 'step3' && row.sessionId === interview.sessionId && row.questionId === interview.questionId) {
+          await receiveAIResult(result);
         }
-      } catch {
+      } catch (error) {
+        if (error?.name !== 'AbortError') console.error('[NOVA QUEUE]', error);
         break;
+      } finally {
+        if (currentStep === 'step3') setInterviewBusy(false);
       }
+      break;
     }
   }
 
-  window.addEventListener('online', flushVoiceQueue);
+  window.addEventListener('online', () => {
+    if (recordAnswerButton) recordAnswerButton.disabled = false;
+    flushVoiceQueue();
+  });
   window.addEventListener('offline', refreshInterviewUI);
+  window.addEventListener('beforeunload', cleanupNova);
   refreshInterviewUI();
   setTimeout(flushVoiceQueue, 600);
 
