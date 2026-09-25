@@ -4206,6 +4206,14 @@ main{width:100%;height:100%}
     if (!message || currentStep !== 'step3') return ttsResult(false, 'inactive');
 
     const lifecycle = interview.lifecycleId;
+
+    // Invariante de audio: Nova nunca habla mientras el micrófono está capturando.
+    if (interview.recordingState === 'starting' || interview.recordingState === 'recording') {
+      cancelRecordingWithoutProcessing();
+    } else if (interview.mediaStream) {
+      releaseMicrophone();
+    }
+
     stopSpeaking();
     const operationId = speechOperationId;
 
