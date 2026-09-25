@@ -3036,6 +3036,11 @@ main{width:100%;height:100%}
     kokoroTtsUrl: '',
     maxRecordingSeconds: 30,
     minRecordingMs: 800,
+    vadCalibrationMs: 450,
+    vadSpeechStartMs: 180,
+    vadSilenceMs: 1500,
+    vadNoSpeechMs: 8000,
+    vadPostTtsDelayMs: 300,
     maxInterviewQuestions: 7,
     targetInterviewQuestions: 4,
     minInterviewQuestions: 3
@@ -3556,7 +3561,15 @@ main{width:100%;height:100%}
     lifecycleId: 0,
     isProcessing: false,
     welcomePlayed: sessionStorage.getItem('despegaAgentWelcomed') === (localStorage.getItem('despegaInterviewSession') || ''),
-    agentState: 'idle'
+    agentState: 'idle',
+    audioContext: null,
+    analyser: null,
+    vadFrame: null,
+    vadToken: 0,
+    speechDetected: false,
+    autoListenEnabled: true,
+    noSpeechReminderCount: 0,
+    stopReason: 'manual'
   };
 
   localStorage.setItem('despegaInterviewSession', interview.sessionId);
@@ -3590,7 +3603,10 @@ main{width:100%;height:100%}
   const AGENT_STATE_LABELS = {
     idle: 'Lista para conocerte',
     speaking: 'Nova está hablando',
+    arming: 'Preparando el micrófono…',
+    waiting: 'Puedes empezar a hablar',
     listening: 'Nova te está escuchando',
+    silence_grace: 'Detectando el final de tu respuesta…',
     thinking: 'Analizando tu respuesta…',
     processing: 'Analizando tu respuesta…',
     paused: 'Conversación pausada',
@@ -3629,17 +3645,25 @@ main{width:100%;height:100%}
     if (currentStep !== 'step3') return;
     refreshAgentIdentity();
     refreshInterviewUI();
-    if (recordCaption && interview.recordingState !== 'recording') recordCaption.textContent = 'Toca una vez para responder';
-    if (recordHelper && interview.recordingState !== 'recording') recordHelper.textContent = 'El micrófono se activa únicamente cuando tocas el botón.';
-    if (recordAnswerButton) recordAnswerButton.disabled = !navigator.onLine && interview.isProcessing;
-    if (interview.welcomePlayed || interview.answersCount > 0 || interview.isProcessing) return;
+
+    if (interview.isProcessing) return;
+
+    if (interview.welcomePlayed || interview.answersCount > 0) {
+      if (interview.autoListenEnabled && interview.recordingState === 'idle') {
+        await beginListeningTurn();
+      }
+      return;
+    }
 
     interview.welcomePlayed = true;
     sessionStorage.setItem('despegaAgentWelcomed', interview.sessionId);
     const name = getInterviewFirstName();
     setAgentEmotion('happy');
     const welcome = `${name ? `Hola, ${name}.` : 'Hola.'} Encantada de conocerte. Me llamo Nova y voy a acompañarte para conocerte un poquito mejor. ${interview.currentQuestion}`;
-    await speakText(welcome, false);
+    const stillActive = await speakText(welcome, false);
+    if (stillActive && currentStep === 'step3' && interview.autoListenEnabled) {
+      await beginListeningTurn();
+    }
   }
 
   function formatSecondsToClock(totalSeconds) {
@@ -3813,7 +3837,7 @@ main{width:100%;height:100%}
       setVoiceStatus('Nova repetirá la misma pregunta.', 'ok');
       await speakText(String(result?.control_response || 'Claro, te la repito.'), false);
       await speakText(interview.currentQuestion, false);
-      resetForRecording();
+      await beginListeningTurn();
       return true;
     }
 
@@ -3821,7 +3845,7 @@ main{width:100%;height:100%}
       setVoiceStatus('Nova repetirá el ejemplo.', 'ok');
       await speakText(String(result?.control_response || 'Claro, escucha este ejemplo.'), false);
       await speakText(interview.currentExample, true);
-      resetForRecording();
+      await beginListeningTurn();
       return true;
     }
 
@@ -3835,15 +3859,19 @@ main{width:100%;height:100%}
         refreshInterviewUI();
       }
       await speakText(interview.currentQuestion, false);
-      resetForRecording();
+      await beginListeningTurn();
       return true;
     }
 
     if (intent === 'pause') {
+      interview.autoListenEnabled = false;
+      cancelRecordingWithoutProcessing();
       setVoiceStatus('La conversación quedó en pausa. Toca el micrófono cuando quieras continuar.', 'ok');
       await speakText(String(result?.control_response || 'Claro. Cuando quieras, continuamos.'), false);
-      setAgentState('idle');
-      if (recordCaption) recordCaption.textContent = 'Toca una vez cuando quieras continuar';
+      setAgentState('paused');
+      if (recordCaption) recordCaption.textContent = 'Conversación pausada';
+      if (recordHelper) recordHelper.textContent = 'Toca el micrófono cuando quieras continuar.';
+      if (recordAnswerButton) recordAnswerButton.disabled = false;
       return true;
     }
 
@@ -3860,7 +3888,7 @@ main{width:100%;height:100%}
       }
       await speakText(String(result?.control_response || 'Está bien, podemos pasar a otra pregunta.'), false);
       if (next) await speakText(next, false);
-      resetForRecording();
+      await beginListeningTurn();
       return true;
     }
 
@@ -3886,6 +3914,7 @@ main{width:100%;height:100%}
   }
 
   function releaseMicrophone() {
+    stopVoiceActivityDetection();
     interview.mediaStream?.getTracks?.().forEach(track => {
       try { track.stop(); } catch {}
     });
@@ -3923,7 +3952,9 @@ main{width:100%;height:100%}
     interview.mediaRecorder = null;
     interview.recordingState = 'idle';
     interview.stopRequested = false;
+    interview.speechDetected = false;
     interview.chunks = [];
+    stopVoiceActivityDetection();
     releaseMicrophone();
 
     interview.isProcessing = false;
@@ -4011,9 +4042,10 @@ main{width:100%;height:100%}
     if (exampleAudioCard?.classList.contains('playing')) return stopSpeaking();
     speakText(interview.currentExample, true);
   });
-  speakerPromptButton?.addEventListener('click', () => {
+  speakerPromptButton?.addEventListener('click', async () => {
     if (speakerPromptButton?.classList.contains('speaking')) return stopSpeaking();
-    speakText(interview.currentQuestion, false);
+    const stillActive = await speakText(interview.currentQuestion, false);
+    if (stillActive && interview.autoListenEnabled) await beginListeningTurn();
   });
 
   // -------- Gemini via Supabase Edge Function --------
@@ -4139,14 +4171,261 @@ main{width:100%;height:100%}
     }
   }
 
-  async function startRealRecording(event) {
+  function stopVoiceActivityDetection() {
+    interview.vadToken += 1;
+    if (interview.vadFrame) {
+      cancelAnimationFrame(interview.vadFrame);
+      interview.vadFrame = null;
+    }
+    try { interview.analyser?.disconnect?.(); } catch {}
+    interview.analyser = null;
+
+    const context = interview.audioContext;
+    interview.audioContext = null;
+    if (context && context.state !== 'closed') {
+      try { context.close().catch(() => {}); } catch {}
+    }
+  }
+
+  function cancelRecordingWithoutProcessing() {
+    stopVoiceActivityDetection();
+    clearTimeout(interview.maxTimer);
+    clearInterval(interview.durationTimer);
+    interview.maxTimer = null;
+    interview.durationTimer = null;
+
+    const recorder = interview.mediaRecorder;
+    if (recorder && recorder.state !== 'inactive') {
+      recorder.ondataavailable = null;
+      recorder.onstop = null;
+      recorder.onerror = null;
+      try { recorder.stop(); } catch {}
+    }
+
+    interview.mediaRecorder = null;
+    interview.recordingState = 'idle';
+    interview.stopRequested = false;
+    interview.speechDetected = false;
+    interview.chunks = [];
+    recordAnswerButton?.classList.remove('recording');
+    recordAnswerButton?.setAttribute('aria-pressed', 'false');
+    releaseMicrophone();
+  }
+
+  async function handleNoSpeechTimeout(lifecycle) {
+    if (currentStep !== 'step3' || lifecycle !== interview.lifecycleId) return;
+    cancelRecordingWithoutProcessing();
+    interview.noSpeechReminderCount += 1;
+    console.log('[NOVA] no_speech_timeout', { count: interview.noSpeechReminderCount });
+
+    if (interview.noSpeechReminderCount === 1) {
+      setAgentEmotion('supportive');
+      setAgentState('supportive');
+      if (recordCaption) recordCaption.textContent = 'No escuché una respuesta todavía';
+      if (recordHelper) recordHelper.textContent = 'Tómate tu tiempo. Nova volverá a escucharte.';
+      setVoiceStatus('No detecté voz. Te doy un momento más.', 'ok');
+
+      const stillActive = await speakText('¿Sigues ahí? Tómate tu tiempo. Cuando quieras, cuéntame tu respuesta.', false);
+      if (
+        stillActive &&
+        currentStep === 'step3' &&
+        lifecycle === interview.lifecycleId &&
+        interview.autoListenEnabled
+      ) {
+        await beginListeningTurn();
+      }
+      return;
+    }
+
+    interview.autoListenEnabled = false;
+    setAgentEmotion('calm');
+    const stillActive = await speakText('Podemos continuar cuando quieras. Toca el micrófono para seguir.', false);
+    if (stillActive && currentStep === 'step3' && lifecycle === interview.lifecycleId) {
+      setAgentState('paused');
+      if (recordCaption) recordCaption.textContent = 'Conversación pausada';
+      if (recordHelper) recordHelper.textContent = 'Toca el micrófono cuando quieras continuar.';
+      setVoiceStatus('Conversación pausada.', 'ok');
+      if (recordAnswerButton) recordAnswerButton.disabled = false;
+    }
+  }
+
+  function startVoiceActivityDetection(stream, lifecycle) {
+    stopVoiceActivityDetection();
+    const token = ++interview.vadToken;
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+
+    if (!AudioContextClass) {
+      setAgentState('listening');
+      setVoiceStatus('Te escucho. Toca el micrófono cuando termines.', 'processing');
+      return;
+    }
+
+    const context = new AudioContextClass();
+    const source = context.createMediaStreamSource(stream);
+    const analyser = context.createAnalyser();
+    analyser.fftSize = 512;
+    analyser.smoothingTimeConstant = 0.2;
+    source.connect(analyser);
+
+    interview.audioContext = context;
+    interview.analyser = analyser;
+    interview.speechDetected = false;
+
+    try { context.resume?.().catch(() => {}); } catch {}
+
+    const samples = new Uint8Array(analyser.fftSize);
+    const calibrationSamples = [];
+    const startedAt = performance.now();
+    let calibrated = false;
+    let threshold = 0.03;
+    let voiceAboveSince = 0;
+    let lastVoiceAt = 0;
+    let silenceUiShown = false;
+    let timeoutHandled = false;
+
+    setAgentState('arming');
+    if (recordCaption) recordCaption.textContent = 'Preparando escucha…';
+    if (recordHelper) recordHelper.textContent = 'En un instante puedes empezar a hablar.';
+    setVoiceStatus('Calibrando el ruido del ambiente…', 'processing');
+
+    const computeRms = () => {
+      analyser.getByteTimeDomainData(samples);
+      let sum = 0;
+      for (let i = 0; i < samples.length; i += 1) {
+        const normalized = (samples[i] - 128) / 128;
+        sum += normalized * normalized;
+      }
+      return Math.sqrt(sum / samples.length);
+    };
+
+    const loop = () => {
+      if (
+        token !== interview.vadToken ||
+        currentStep !== 'step3' ||
+        lifecycle !== interview.lifecycleId ||
+        interview.recordingState !== 'recording'
+      ) return;
+
+      const now = performance.now();
+      const rms = computeRms();
+
+      if (!calibrated) {
+        calibrationSamples.push(rms);
+        if (now - startedAt >= DESPEGA_AI.vadCalibrationMs) {
+          const ordered = calibrationSamples.slice().sort((a, b) => a - b);
+          const base = ordered[Math.floor(Math.max(0, ordered.length - 1) * 0.35)] || 0.008;
+          threshold = Math.min(0.09, Math.max(0.02, base * 2.6 + 0.006));
+          calibrated = true;
+          setAgentState('waiting');
+          if (recordCaption) recordCaption.textContent = 'Puedes empezar a hablar';
+          if (recordHelper) recordHelper.textContent = 'Nova detectará automáticamente cuando termines.';
+          setVoiceStatus('Te escucho…', 'processing');
+          console.log('[NOVA] listen_armed', { noiseFloor: Number(base.toFixed(4)), threshold: Number(threshold.toFixed(4)) });
+        }
+        interview.vadFrame = requestAnimationFrame(loop);
+        return;
+      }
+
+      const aboveThreshold = rms >= threshold;
+
+      if (!interview.speechDetected) {
+        if (aboveThreshold) {
+          if (!voiceAboveSince) voiceAboveSince = now;
+          if (now - voiceAboveSince >= DESPEGA_AI.vadSpeechStartMs) {
+            interview.speechDetected = true;
+            interview.noSpeechReminderCount = 0;
+            lastVoiceAt = now;
+            setAgentState('listening');
+            if (recordCaption) recordCaption.textContent = 'Te escucho…';
+            if (recordHelper) recordHelper.textContent = 'Habla con calma; no necesitas tocar nada al terminar.';
+            setVoiceStatus('Te estoy escuchando…', 'processing');
+            console.log('[NOVA] speech_started');
+          }
+        } else {
+          voiceAboveSince = 0;
+        }
+
+        if (!timeoutHandled && now - startedAt >= DESPEGA_AI.vadNoSpeechMs) {
+          timeoutHandled = true;
+          stopVoiceActivityDetection();
+          handleNoSpeechTimeout(lifecycle);
+          return;
+        }
+      } else {
+        if (aboveThreshold) {
+          lastVoiceAt = now;
+          silenceUiShown = false;
+          if (interview.agentState !== 'listening') setAgentState('listening');
+        } else if (lastVoiceAt) {
+          const silenceMs = now - lastVoiceAt;
+          if (silenceMs >= 550 && !silenceUiShown) {
+            silenceUiShown = true;
+            setAgentState('silence_grace');
+          }
+          if (silenceMs >= DESPEGA_AI.vadSilenceMs) {
+            console.log('[NOVA] silence_detected', { silenceMs: Math.round(silenceMs) });
+            stopVoiceActivityDetection();
+            stopRealRecording('silence');
+            return;
+          }
+        }
+      }
+
+      interview.vadFrame = requestAnimationFrame(loop);
+    };
+
+    interview.vadFrame = requestAnimationFrame(loop);
+  }
+
+  async function beginListeningTurn() {
+    const lifecycle = interview.lifecycleId;
+    if (
+      currentStep !== 'step3' ||
+      lifecycle !== interview.lifecycleId ||
+      interview.isProcessing ||
+      !interview.autoListenEnabled ||
+      interview.recordingState !== 'idle'
+    ) return false;
+
+    if (!navigator.onLine) {
+      setAgentState('paused');
+      setVoiceStatus('Sin conexión. Podrás continuar cuando vuelva Internet.', 'error');
+      return false;
+    }
+
+    setAgentState('arming');
+    if (recordCaption) recordCaption.textContent = 'Preparando escucha…';
+    if (recordHelper) recordHelper.textContent = 'Nova activará el micrófono automáticamente.';
+    setVoiceStatus('Preparando micrófono…', 'processing');
+
+    await new Promise(resolve => setTimeout(resolve, DESPEGA_AI.vadPostTtsDelayMs));
+
+    if (
+      currentStep !== 'step3' ||
+      lifecycle !== interview.lifecycleId ||
+      interview.isProcessing ||
+      !interview.autoListenEnabled
+    ) return false;
+
+    return startRealRecording(null, { lifecycle, automatic: true });
+  }
+
+  async function startRealRecording(event, options = {}) {
     event?.preventDefault();
-    if (currentStep !== 'step3' || interview.isProcessing) return;
-    if (interview.recordingState !== 'idle') return;
+    if (currentStep !== 'step3' || interview.isProcessing) return false;
+    if (interview.recordingState !== 'idle') return false;
+
+    const lifecycle = Number.isFinite(options.lifecycle) ? options.lifecycle : interview.lifecycleId;
+    if (event) {
+      interview.autoListenEnabled = true;
+      interview.noSpeechReminderCount = 0;
+    }
 
     interview.recordingState = 'starting';
     interview.stopRequested = false;
+    interview.stopReason = 'manual';
     interview.lastRecordingDurationMs = 0;
+    interview.speechDetected = false;
     stopSpeaking();
     aiConfirmation.hidden = true;
     if (recordAnswerButton) recordAnswerButton.disabled = true;
@@ -4154,10 +4433,10 @@ main{width:100%;height:100%}
     try {
       setVoiceStatus('Solicitando acceso al micrófono…', 'processing');
       const stream = await ensureMicrophone();
-      if (currentStep !== 'step3') {
+      if (currentStep !== 'step3' || lifecycle !== interview.lifecycleId) {
         releaseMicrophone();
         interview.recordingState = 'idle';
-        return;
+        return false;
       }
 
       validateAudioTrack(stream);
@@ -4182,19 +4461,23 @@ main{width:100%;height:100%}
 
       recordAnswerButton?.classList.add('recording');
       recordAnswerButton?.setAttribute('aria-pressed', 'true');
-      recordAnswerButton?.setAttribute('aria-label', 'Toca otra vez para terminar y enviar tu respuesta');
+      recordAnswerButton?.setAttribute('aria-label', 'Detener respuesta manualmente');
       if (recordAnswerButton) recordAnswerButton.disabled = false;
-      if (recordCaption) recordCaption.textContent = 'Te escucho… toca otra vez para terminar';
-      if (recordHelper) recordHelper.textContent = 'Habla con calma y toca el micrófono otra vez cuando termines.';
-      setAgentState('listening');
-      setVoiceStatus('Grabando… 0:00', 'processing');
+      if (recordCaption) recordCaption.textContent = 'Preparando escucha…';
+      if (recordHelper) recordHelper.textContent = 'Nova detectará tu voz y el final de tu respuesta.';
+      setAgentState('arming');
+      setVoiceStatus('Preparando escucha…', 'processing');
       console.log('[NOVA] recorder started', interview.mediaRecorder.mimeType);
 
+      startVoiceActivityDetection(stream, lifecycle);
+
       interview.durationTimer = setInterval(() => {
+        if (!interview.speechDetected) return;
         const seconds = (Date.now() - interview.startedAt) / 1000;
-        setVoiceStatus(`Grabando… ${formatSecondsToClock(seconds)}`, 'processing');
+        setVoiceStatus(`Te estoy escuchando… ${formatSecondsToClock(seconds)}`, 'processing');
       }, 250);
-      interview.maxTimer = setTimeout(stopRealRecording, DESPEGA_AI.maxRecordingSeconds * 1000);
+      interview.maxTimer = setTimeout(() => stopRealRecording('max_duration'), DESPEGA_AI.maxRecordingSeconds * 1000);
+      return true;
     } catch (error) {
       interview.recordingState = 'idle';
       releaseMicrophone();
@@ -4203,10 +4486,11 @@ main{width:100%;height:100%}
       setAgentState('error');
       setVoiceStatus(error.message || 'No pudimos acceder al micrófono.', 'error');
       console.error('[NOVA AUDIO]', error);
+      return false;
     }
   }
 
-  function stopRealRecording() {
+  function stopRealRecording(reason = 'manual') {
     if (interview.recordingState !== 'recording' || interview.mediaRecorder?.state !== 'recording') {
       interview.stopRequested = true;
       return;
@@ -4214,7 +4498,9 @@ main{width:100%;height:100%}
 
     interview.recordingState = 'stopping';
     interview.stopRequested = true;
+    interview.stopReason = reason;
     interview.lastRecordingDurationMs = Math.max(0, Date.now() - interview.startedAt);
+    stopVoiceActivityDetection();
 
     clearTimeout(interview.maxTimer);
     clearInterval(interview.durationTimer);
@@ -4237,15 +4523,25 @@ main{width:100%;height:100%}
     if (recordCaption) recordCaption.textContent = 'Procesando tu respuesta…';
     if (recordHelper) recordHelper.textContent = 'Nova está entendiendo lo que le contaste.';
     setAgentState('thinking');
-    console.log('[NOVA] recorder stopped', { durationMs: interview.lastRecordingDurationMs });
+    console.log('[NOVA] recorder stopped', {
+      durationMs: interview.lastRecordingDurationMs,
+      reason: interview.stopReason
+    });
   }
 
   function toggleRealRecording(event) {
     event?.preventDefault();
     if (currentStep !== 'step3' || interview.isProcessing) return;
     if (interview.recordingState === 'starting' || interview.recordingState === 'stopping') return;
-    if (interview.recordingState === 'recording') stopRealRecording();
-    else if (interview.recordingState === 'idle') startRealRecording(event);
+    if (interview.recordingState === 'recording') {
+      stopRealRecording('manual');
+      return;
+    }
+    if (interview.recordingState === 'idle') {
+      interview.autoListenEnabled = true;
+      interview.noSpeechReminderCount = 0;
+      startRealRecording(event);
+    }
   }
 
   async function processRecordedAudio() {
@@ -4298,6 +4594,7 @@ main{width:100%;height:100%}
       conversationHistory: (interview.conversationHistory || []).slice(-10),
       currentExample: interview.currentExample || '',
       durationMs,
+      stopReason: interview.stopReason,
       blob,
       mimeType: blob.type,
       createdAt: Date.now(),
@@ -4459,10 +4756,10 @@ main{width:100%;height:100%}
       if (aiAutoNext) aiAutoNext.textContent = 'Nova continuará automáticamente…';
     }
 
-    await speakText(interview.currentQuestion, false);
-    if (currentStep !== 'step3') return;
-    resetForRecording();
+    const stillActive = await speakText(interview.currentQuestion, false);
+    if (!stillActive || currentStep !== 'step3') return;
     refreshInterviewUI();
+    await beginListeningTurn();
   }
 
   async function receiveAIResult(result) {
@@ -4526,10 +4823,10 @@ main{width:100%;height:100%}
     interview.pendingResult = null;
     aiConfirmation.hidden = true;
     micPanel.hidden = false;
-    if (recordCaption) recordCaption.textContent = 'Toca una vez para responder';
-    if (recordHelper) recordHelper.textContent = 'El micrófono se activa únicamente cuando tocas el botón.';
+    if (recordCaption) recordCaption.textContent = 'Toca el micrófono para continuar';
+    if (recordHelper) recordHelper.textContent = 'El botón queda disponible como respaldo si la escucha automática no puede iniciarse.';
     setAgentState('idle');
-    setVoiceStatus('Cuando estés listo, toca el micrófono.');
+    setVoiceStatus('Listo para continuar.');
     if (recordAnswerButton) recordAnswerButton.disabled = false;
   }
 
