@@ -4469,7 +4469,15 @@ main{width:100%;height:100%}
       setVoiceStatus('Preparando escucha…', 'processing');
       console.log('[NOVA] recorder started', interview.mediaRecorder.mimeType);
 
-      startVoiceActivityDetection(stream, lifecycle);
+      try {
+        startVoiceActivityDetection(stream, lifecycle);
+      } catch (vadError) {
+        console.warn('[NOVA VAD] fallback manual', vadError);
+        setAgentState('listening');
+        if (recordCaption) recordCaption.textContent = 'Te escucho…';
+        if (recordHelper) recordHelper.textContent = 'La detección automática no está disponible. Toca el micrófono cuando termines.';
+        setVoiceStatus('Te escucho. Toca el micrófono cuando termines.', 'processing');
+      }
 
       interview.durationTimer = setInterval(() => {
         if (!interview.speechDetected) return;
