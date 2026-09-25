@@ -642,3 +642,157 @@
     min-height: 34px !important;
   }
 }
+
+
+/* === HERO REBUILD — PASOS 2 Y 3 === */
+/*
+ * Paso 2 y Paso 3 todavía reciben un único asset que contiene
+ * título + subtítulo + personajes. En desktop se recompone ese asset
+ * para que se comporte como el hero del Login:
+ *   texto superior independiente + personajes protagonistas abajo.
+ * Así deja de verse como una lámina/póster centrado.
+ */
+@media (min-width: 781px) {
+  #step2View .onboarding-art-panel,
+  #step3View .onboarding-art-panel {
+    position: relative !important;
+    display: block !important;
+    height: 100dvh !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    background: var(--bg-main) !important;
+    isolation: isolate;
+  }
+
+  /* Título principal recreado con la jerarquía tipográfica del Login. */
+  #step2View .onboarding-art-panel::before,
+  #step3View .onboarding-art-panel::before {
+    position: absolute;
+    z-index: 3;
+    top: clamp(92px, 12.5dvh, 128px);
+    left: 50%;
+    width: min(82%, 720px);
+    transform: translateX(-50%);
+    color: var(--navy-900);
+    font-family: Poppins, system-ui, sans-serif;
+    font-size: clamp(42px, 3.45vw, 58px);
+    font-weight: 800;
+    line-height: 1.02;
+    letter-spacing: -0.035em;
+    text-align: center;
+    white-space: pre-line;
+    pointer-events: none;
+  }
+
+  #step2View .onboarding-art-panel::before {
+    content: "Cada respuesta\A nos acerca a tu ruta";
+  }
+
+  #step3View .onboarding-art-panel::before {
+    content: "Conocerte mejor\A nos ayuda a orientarte";
+  }
+
+  /* Subtítulo, separado del asset como ocurre en Login/Tus datos. */
+  #step2View .onboarding-art-panel::after,
+  #step3View .onboarding-art-panel::after {
+    position: absolute;
+    z-index: 3;
+    top: clamp(200px, 28dvh, 232px);
+    left: 50%;
+    width: min(72%, 620px);
+    transform: translateX(-50%);
+    color: #7184A8;
+    font-family: Poppins, system-ui, sans-serif;
+    font-size: clamp(14px, 1.2vw, 18px);
+    font-weight: 400;
+    line-height: 1.35;
+    text-align: center;
+    pointer-events: none;
+  }
+
+  #step2View .onboarding-art-panel::after {
+    content: "Tus respuestas nos ayudan a crear una ruta más personalizada para ti.";
+  }
+
+  #step3View .onboarding-art-panel::after {
+    content: "Tus intereses y barreras nos permiten mostrarte opciones más relevantes.";
+  }
+
+  /*
+   * El mismo asset se conserva para no cambiar ilustraciones,
+   * pero en desktop solo se muestra su zona inferior de personajes.
+   */
+  #step2View .onboarding-art,
+  #step3View .onboarding-art {
+    position: absolute !important;
+    z-index: 1;
+    left: 50% !important;
+    bottom: -1px !important;
+    width: min(88%, 760px) !important;
+    height: auto !important;
+    max-width: none !important;
+    max-height: none !important;
+    transform: translateX(-50%) !important;
+    object-fit: initial !important;
+    object-position: initial !important;
+    border-radius: 0 !important;
+    clip-path: inset(31% 0 0 0);
+  }
+
+  /* Card derecha: misma respiración lateral que el Login. */
+  #step2View .flow-panel,
+  #step3View .flow-panel {
+    padding-right: clamp(34px, 4vw, 64px) !important;
+    padding-left: clamp(18px, 2vw, 30px) !important;
+  }
+
+  #step2View .flow-card {
+    width: min(100%, 620px) !important;
+  }
+
+  #step3View .flow-card,
+  #step3View .step3-card {
+    width: min(100%, 640px) !important;
+  }
+}
+
+/* 1366×768 y laptops equivalentes: misma composición, no póster. */
+@media (min-width: 781px) and (max-height: 800px) {
+  #step2View .onboarding-art-panel::before,
+  #step3View .onboarding-art-panel::before {
+    top: 72px;
+    width: min(84%, 680px);
+    font-size: clamp(38px, 3.25vw, 50px);
+  }
+
+  #step2View .onboarding-art-panel::after,
+  #step3View .onboarding-art-panel::after {
+    top: 174px;
+    width: min(74%, 580px);
+    font-size: 13.5px;
+  }
+
+  #step2View .onboarding-art,
+  #step3View .onboarding-art {
+    width: min(90%, 700px) !important;
+    clip-path: inset(31% 0 0 0);
+  }
+
+  #step2View .flow-panel,
+  #step3View .flow-panel {
+    padding-top: 54px !important;
+    padding-right: 42px !important;
+    padding-bottom: 12px !important;
+    padding-left: 18px !important;
+  }
+
+  #step2View .flow-card,
+  #step2View .step2-card {
+    width: min(100%, 600px) !important;
+  }
+
+  #step3View .flow-card,
+  #step3View .step3-card {
+    width: min(100%, 620px) !important;
+  }
+}
