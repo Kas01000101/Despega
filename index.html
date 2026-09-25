@@ -2464,6 +2464,14 @@ main{width:100%;height:100%}
 </style>
   <link rel="stylesheet" href="./src/styles/nova-avatar.css">
   <link rel="stylesheet" href="./src/styles/onboarding-layout.css">
+
+<style id="nova-finish-controls">
+#step3View .nova-actions{justify-content:space-between!important;gap:14px!important}
+#step3View .nova-finish-button{min-width:132px!important;height:42px!important;min-height:42px!important;margin:0!important}
+#step3View .nova-finish-button:disabled{opacity:.42!important;cursor:not-allowed!important;box-shadow:none!important}
+#step3View .nova-finish-button:not(:disabled){box-shadow:0 10px 24px rgba(241,38,141,.16)!important}
+@media(max-width:560px){#step3View .nova-actions{align-items:stretch!important}#step3View .nova-actions>button{flex:1 1 0!important;min-width:0!important}}
+</style>
 </head>
 <body>
 <!--
@@ -2905,6 +2913,7 @@ main{width:100%;height:100%}
 
           <footer class="nova-actions">
             <button id="step3Back" class="secondary-button" type="button">Volver</button>
+            <button id="step3Finish" class="primary-button nova-finish-button" type="button" disabled>Finalizar</button>
           </footer>
         </form>
       </div>
@@ -3073,9 +3082,12 @@ main{width:100%;height:100%}
     vadNoiseOffset: 0.003,
     vadContinueRatio: 0.72,
     vadDebugIntervalMs: 350,
-    maxInterviewQuestions: 7,
-    targetInterviewQuestions: 4,
-    minInterviewQuestions: 3
+    maxInterviewQuestions: 5,
+    targetInterviewQuestions: 5,
+    minInterviewQuestions: 3,
+    novaSpeechRate: 1.03,
+    novaSpeechPitch: 1.08,
+    novaSpeechVolume: 1
   });
 
   const NOVA_DEBUG = true;
@@ -3556,8 +3568,50 @@ main{width:100%;height:100%}
     animateThen(event.currentTarget, 'back', () => goTo('step2'))
   );
 
-  const INITIAL_QUESTION = '¿Qué te gustaría hacer o aprender en este momento?';
-  const INITIAL_EXAMPLE = 'Por ejemplo, me gustaría terminar mis estudios y luego llevar un curso corto de tecnología.';
+  const NOVA_CORE_DIMENSIONS = Object.freeze(['goal', 'interests', 'skills', 'experience', 'barriers']);
+  const NOVA_DIMENSION_SET = new Set(NOVA_CORE_DIMENSIONS);
+  const NOVA_QUESTIONS = Object.freeze({
+    goal: {
+      question: '¿Qué te gustaría hacer o aprender en este momento?',
+      example: 'Por ejemplo: terminar tus estudios, aprender una habilidad, conseguir tu primer trabajo o estudiar una carrera técnica.'
+    },
+    interests: {
+      question: '¿Qué áreas o temas te interesan más?',
+      example: 'Por ejemplo: tecnología, diseño, negocios, salud, mecánica, educación o atención al cliente.'
+    },
+    skills: {
+      question: '¿Qué cosas sientes que haces bien?',
+      example: 'Por ejemplo: organizar, explicar ideas, vender, reparar cosas, usar una computadora o ayudar a otras personas.'
+    },
+    experience: {
+      question: '¿Hay algo que ya hayas hecho, aunque no haya sido un trabajo formal?',
+      example: 'Por ejemplo: ayudar en un negocio familiar, vender productos, cuidar personas o hacer proyectos del colegio.'
+    },
+    barriers: {
+      question: '¿Hay algo que hoy te dificulte avanzar hacia lo que quieres?',
+      example: 'Por ejemplo: falta de tiempo, dinero, internet, transporte, responsabilidades en casa o no saber por dónde empezar.'
+    }
+  });
+  const INITIAL_QUESTION = NOVA_QUESTIONS.goal.question;
+  const INITIAL_EXAMPLE = NOVA_QUESTIONS.goal.example;
+
+  function defaultDimensionStatus() {
+    return Object.fromEntries(NOVA_CORE_DIMENSIONS.map((dimension) => [dimension, 'pending']));
+  }
+
+  function loadDimensionStatus() {
+    try {
+      const stored = JSON.parse(localStorage.getItem('despegaDimensionStatus') || '{}');
+      const status = defaultDimensionStatus();
+      for (const dimension of NOVA_CORE_DIMENSIONS) {
+        const value = String(stored?.[dimension] || 'pending').toLowerCase();
+        status[dimension] = ['covered', 'skipped'].includes(value) ? value : 'pending';
+      }
+      return status;
+    } catch {
+      return defaultDimensionStatus();
+    }
+  }
 
   const interview = {
     sessionId: localStorage.getItem('despegaInterviewSession') || (crypto.randomUUID?.() || `session-${Date.now()}`),
@@ -3576,6 +3630,7 @@ main{width:100%;height:100%}
         return Array.isArray(rows) ? rows.slice(-12) : [];
       } catch { return []; }
     })(),
+    dimensionStatus: loadDimensionStatus(),
     pendingResult: null,
     mediaRecorder: null,
     mediaStream: null,
@@ -3608,6 +3663,7 @@ main{width:100%;height:100%}
   localStorage.setItem('despegaInterviewSession', interview.sessionId);
 
   const playExampleButton = $('#playExampleButton');
+  const step3Finish = $('#step3Finish');
   const exampleAudioCard = $('#exampleAudioCard');
   const exampleQuote = $('#exampleQuote');
   const recordAnswerButton = $('#recordAnswerButton');
@@ -3767,6 +3823,53 @@ main{width:100%;height:100%}
       'aria-pressed',
       String(['waiting','listening','silence_grace'].includes(state))
     );
+    updateFinishButton();
+  }
+
+  function persistDimensionStatus() {
+    localStorage.setItem('despegaDimensionStatus', JSON.stringify(interview.dimensionStatus));
+  }
+
+  function resolvedDimensionCount() {
+    return NOVA_CORE_DIMENSIONS.filter((dimension) =>
+      ['covered', 'skipped'].includes(interview.dimensionStatus?.[dimension])
+    ).length;
+  }
+
+  function getNextPendingDimension(preferred = '') {
+    const preferredDimension = String(preferred || '').trim();
+    if (
+      NOVA_DIMENSION_SET.has(preferredDimension) &&
+      interview.dimensionStatus?.[preferredDimension] === 'pending'
+    ) return preferredDimension;
+    return NOVA_CORE_DIMENSIONS.find(
+      (dimension) => interview.dimensionStatus?.[dimension] === 'pending'
+    ) || '';
+  }
+
+  function applyDimensionUpdates(result = {}) {
+    for (const dimension of (Array.isArray(result.covered_dimensions) ? result.covered_dimensions : [])) {
+      if (NOVA_DIMENSION_SET.has(dimension)) interview.dimensionStatus[dimension] = 'covered';
+    }
+    for (const dimension of (Array.isArray(result.skipped_dimensions) ? result.skipped_dimensions : [])) {
+      if (NOVA_DIMENSION_SET.has(dimension)) interview.dimensionStatus[dimension] = 'skipped';
+    }
+    persistDimensionStatus();
+    console.log('[NOVA FLOW] dimensions', { ...interview.dimensionStatus });
+  }
+
+  function canFinishInterview() {
+    const resolved = resolvedDimensionCount();
+    const hardCapReached = interview.answersCount >= DESPEGA_AI.maxInterviewQuestions;
+    const aiComplete = Boolean(interview.pendingResult?.interview_complete || interview.pendingResult?.should_finish);
+    return resolved >= 3 && (resolved === NOVA_CORE_DIMENSIONS.length || hardCapReached || aiComplete);
+  }
+
+  function updateFinishButton() {
+    if (!step3Finish) return;
+    const ready = canFinishInterview();
+    step3Finish.disabled = !ready || interview.isProcessing || interview.agentState === 'speaking';
+    step3Finish.setAttribute('aria-disabled', String(step3Finish.disabled));
   }
 
   function refreshAgentIdentity() {
@@ -3791,9 +3894,14 @@ main{width:100%;height:100%}
     sessionStorage.setItem('despegaAgentWelcomed', interview.sessionId);
     const name = getInterviewFirstName();
     setAgentEmotion('happy');
-    const welcome = (name ? 'Hola, ' + name + '. ' : 'Hola. ')
-      + 'Encantada de conocerte. Me llamo Nova y voy a acompañarte para conocerte un poquito mejor. '
-      + interview.currentQuestion;
+    const intro = name
+      ? 'Hola, ' + name + '. Soy Nova. Vamos a descubrir qué ruta puede encajar mejor contigo.'
+      : 'Hola. Soy Nova. Vamos a descubrir qué ruta puede encajar mejor contigo.';
+    const welcome = composeNovaTurn(
+      intro,
+      'Para empezar, ' + interview.currentQuestion,
+      interview.currentExample
+    );
 
     const speech = await speakText(welcome, false);
     if (
@@ -3822,12 +3930,14 @@ main{width:100%;height:100%}
     if (recordAnswerButton) recordAnswerButton.disabled = busy;
     if (playExampleButton) playExampleButton.disabled = busy;
     aiQuestionBubble?.classList.toggle('processing', busy);
+    updateFinishButton();
   }
 
   function refreshInterviewUI() {
     if (currentPrompt) currentPrompt.textContent = interview.currentQuestion;
-    if (exampleQuote) exampleQuote.textContent = `“${interview.currentExample}”`;
+    if (exampleQuote) exampleQuote.textContent = interview.currentExample;
     offlinePill?.classList.toggle('show', !navigator.onLine);
+    updateFinishButton();
   }
 
   // -------- IndexedDB: cola offline de audios --------
@@ -3962,6 +4072,7 @@ main{width:100%;height:100%}
       'despegaCurrentExample',
       'despegaAIProfile',
       'despegaConversationHistory',
+      'despegaDimensionStatus',
       'despegaRegisterStep3'
     ];
     try {
@@ -3979,6 +4090,7 @@ main{width:100%;height:100%}
     interview.currentExample = INITIAL_EXAMPLE;
     interview.profile = {};
     interview.conversationHistory = [];
+    interview.dimensionStatus = defaultDimensionStatus();
     interview.pendingResult = null;
     interview.lastRecordingDurationMs = 0;
     interview.recordingState = 'idle';
@@ -3995,6 +4107,7 @@ main{width:100%;height:100%}
     localStorage.setItem('despegaCurrentQuestionId', interview.questionId);
     localStorage.setItem('despegaCurrentQuestion', interview.currentQuestion);
     localStorage.setItem('despegaCurrentExample', interview.currentExample);
+    persistDimensionStatus();
 
     refreshInterviewUI();
     console.log('[NOVA] nova_session_start', { sessionId });
@@ -4069,18 +4182,36 @@ main{width:100%;height:100%}
     }
 
     if (intent === 'skip_question') {
-      const next = String(result?.next_question || '').trim();
-      if (next) {
-        interview.questionId = 'adaptive-' + (interview.answersCount + 1) + '-skip';
-        interview.currentQuestion = next;
-        interview.currentExample = String(result?.example_response || '').trim() || interview.currentExample;
-        localStorage.setItem('despegaCurrentQuestionId', interview.questionId);
-        localStorage.setItem('despegaCurrentQuestion', interview.currentQuestion);
-        localStorage.setItem('despegaCurrentExample', interview.currentExample);
-        refreshInterviewUI();
+      if (NOVA_DIMENSION_SET.has(interview.questionId)) {
+        interview.dimensionStatus[interview.questionId] = 'skipped';
+        persistDimensionStatus();
       }
+
+      const nextDimension = getNextPendingDimension(result?.next_dimension);
+      if (!nextDimension) {
+        interview.pendingResult = { ...result, interview_complete: true, should_finish: true };
+        interview.autoListenEnabled = false;
+        if (micPanel) micPanel.hidden = true;
+        await speakText('Está bien. ¡Listo! Ya tengo lo necesario para construir tu ruta.', false);
+        updateFinishButton();
+        return true;
+      }
+
+      const mapped = NOVA_QUESTIONS[nextDimension];
+      interview.questionId = nextDimension;
+      interview.currentQuestion = String(result?.next_question || '').trim() || mapped.question;
+      interview.currentExample = String(result?.example_response || '').trim() || mapped.example;
+      localStorage.setItem('despegaCurrentQuestionId', interview.questionId);
+      localStorage.setItem('despegaCurrentQuestion', interview.currentQuestion);
+      localStorage.setItem('despegaCurrentExample', interview.currentExample);
+      refreshInterviewUI();
+
       const speech = await speakText(
-        composeNovaTurn(result?.control_response || 'Está bien, podemos pasar a otra pregunta.', next),
+        composeNovaTurn(
+          result?.control_response || 'Está bien, podemos pasar a otra pregunta.',
+          interview.currentQuestion,
+          interview.currentExample
+        ),
         false
       );
       if (speech.ok) await beginListeningTurn();
@@ -4245,6 +4376,8 @@ main{width:100%;height:100%}
     if (recordAnswerButton) recordAnswerButton.disabled = false;
     setAgentState('idle');
     clearNovaNotice();
+    if (step3Finish) step3Finish.textContent = 'Finalizar';
+    updateFinishButton();
 
     console.log('[NOVA] cleanup complete');
   }
@@ -4281,17 +4414,22 @@ main{width:100%;height:100%}
     const utterance = new SpeechSynthesisUtterance(text);
     currentSpeechUtterance = utterance;
     utterance.lang = 'es-PE';
-    utterance.rate = 0.95;
+    utterance.rate = DESPEGA_AI.novaSpeechRate;
+    utterance.pitch = DESPEGA_AI.novaSpeechPitch;
+    utterance.volume = DESPEGA_AI.novaSpeechVolume;
     const selectedVoice = selectBrowserVoice(voices);
     if (selectedVoice) {
       utterance.voice = selectedVoice;
       utterance.lang = selectedVoice.lang || utterance.lang;
     }
 
-    console.log('[NOVA TTS] speak_start', {
+    console.log('[NOVA TTS] voice_profile', {
       provider: 'browser',
       voice: selectedVoice?.name || 'default',
-      lang: utterance.lang
+      lang: utterance.lang,
+      rate: utterance.rate,
+      pitch: utterance.pitch,
+      volume: utterance.volume
     });
 
     return new Promise((resolve) => {
@@ -4450,6 +4588,7 @@ main{width:100%;height:100%}
     form.append('current_example', requestMeta.currentExample || interview.currentExample || '');
     form.append('duration_ms', String(Number.isFinite(requestMeta.durationMs) ? requestMeta.durationMs : (interview.lastRecordingDurationMs || 0)));
     form.append('onboarding_data', JSON.stringify(loadPriorProfile()));
+    form.append('dimension_status', JSON.stringify(requestMeta.dimensionStatus || interview.dimensionStatus || defaultDimensionStatus()));
 
     console.log('[NOVA] sending to Supabase', {
       questionId: requestMeta.questionId || interview.questionId,
@@ -5144,6 +5283,7 @@ main{width:100%;height:100%}
       usefulAnswersCount: interview.usefulAnswersCount,
       profile: { ...loadPriorProfile(), ...interview.profile },
       conversationHistory: (interview.conversationHistory || []).slice(-10),
+      dimensionStatus: { ...interview.dimensionStatus },
       currentExample: interview.currentExample || '',
       durationMs,
       stopReason: interview.stopReason,
@@ -5268,14 +5408,19 @@ main{width:100%;height:100%}
     }
 
     const reachedHardCap = interview.answersCount >= DESPEGA_AI.maxInterviewQuestions;
+    const allResolved = resolvedDimensionCount() === NOVA_CORE_DIMENSIONS.length;
     const hasMinimumUseful = interview.usefulAnswersCount >= DESPEGA_AI.minInterviewQuestions;
-    const finish = reachedHardCap || (Boolean(result?.should_finish) && hasMinimumUseful);
+    const aiComplete = Boolean(result?.interview_complete || result?.should_finish);
+    const finish = (reachedHardCap && hasMinimumUseful) || allResolved || (aiComplete && hasMinimumUseful);
 
     if (finish) {
-      const finalMessage = String(result?.final_message || 'Perfecto. Ya tengo suficiente información para preparar una ruta pensada para ti.').trim();
+      interview.autoListenEnabled = false;
+      interview.pendingResult = { ...result, interview_complete: true, should_finish: true };
+      const finalMessage = String(result?.final_message || '¡Listo! Ya tengo lo necesario para construir tu ruta.').trim();
       setAgentEmotion('celebrating');
       setAgentState('celebrating');
-      if (aiAutoNext) aiAutoNext.textContent = 'Nova ya tiene lo necesario para preparar tu ruta.';
+      if (aiAutoNext) aiAutoNext.textContent = 'Nova ya tiene lo necesario. Cuando quieras, pulsa Finalizar.';
+      if (micPanel) micPanel.hidden = true;
       await speakText(composeNovaTurn(reaction, finalMessage), false);
       if (currentStep !== 'step3') return;
 
@@ -5284,36 +5429,68 @@ main{width:100%;height:100%}
         answersCount: interview.answersCount,
         usefulAnswersCount: interview.usefulAnswersCount,
         profile: interview.profile,
+        dimensionStatus: interview.dimensionStatus,
         missingDimensions: result?.missing_dimensions || []
       });
-      goTo('analysis');
+      updateFinishButton();
+      setVoiceStatus('Perfil listo. Pulsa Finalizar para construir tu ruta.', 'ok');
       return;
     }
 
-    const followUp = chooseFollowUp(result);
-    interview.questionId = followUp.clarification
-      ? 'clarify-' + (interview.answersCount + 1)
-      : 'adaptive-' + (interview.answersCount + 1);
-    interview.currentQuestion = followUp.question;
-    interview.currentExample = followUp.example;
+    const needsClarification = Boolean(result?.clarification_needed)
+      || ['insufficient', 'partial'].includes(sufficiency);
+
+    let nextDimension = '';
+    let nextQuestion = '';
+    let nextExample = '';
+
+    if (needsClarification) {
+      nextDimension = NOVA_DIMENSION_SET.has(interview.questionId)
+        ? interview.questionId
+        : getNextPendingDimension();
+      const mapped = NOVA_QUESTIONS[nextDimension] || NOVA_QUESTIONS.goal;
+      nextQuestion = String(result?.clarification_question || result?.rephrased_question || '').trim() || mapped.question;
+      nextExample = String(result?.example_response || '').trim() || mapped.example;
+      setAgentEmotion('curious');
+      if (aiAutoNext) aiAutoNext.textContent = 'Nova necesita un poquito más de información…';
+    } else {
+      nextDimension = getNextPendingDimension(result?.next_dimension);
+      if (!nextDimension) {
+        interview.pendingResult = { ...result, interview_complete: true, should_finish: true };
+        interview.autoListenEnabled = false;
+        if (micPanel) micPanel.hidden = true;
+        await speakText('¡Listo! Ya tengo lo necesario para construir tu ruta.', false);
+        updateFinishButton();
+        return;
+      }
+      const mapped = NOVA_QUESTIONS[nextDimension];
+      nextQuestion = String(result?.next_question || '').trim() || mapped.question;
+      nextExample = String(result?.example_response || '').trim() || mapped.example;
+      setAgentEmotion(normalizeNovaEmotion(result));
+      if (aiAutoNext) aiAutoNext.textContent = 'Nova continuará con la siguiente pregunta…';
+    }
+
+    interview.questionId = nextDimension;
+    interview.currentQuestion = nextQuestion;
+    interview.currentExample = nextExample;
     localStorage.setItem('despegaCurrentQuestionId', interview.questionId);
     localStorage.setItem('despegaCurrentQuestion', interview.currentQuestion);
     localStorage.setItem('despegaCurrentExample', interview.currentExample);
 
-    if (followUp.clarification) {
-      setAgentEmotion('curious');
-      if (aiAutoNext) aiAutoNext.textContent = 'Nova necesita un poquito más de información y continuará sola…';
-    } else {
-      setAgentEmotion(normalizeNovaEmotion(result));
-      if (aiAutoNext) aiAutoNext.textContent = 'Nova continuará automáticamente…';
-    }
-
     refreshInterviewUI();
-    const speech = await speakText(composeNovaTurn(reaction, interview.currentQuestion), false);
+    console.log('[NOVA FLOW] next_dimension', {
+      nextDimension,
+      answersCount: interview.answersCount,
+      resolved: resolvedDimensionCount()
+    });
+
+    const speech = await speakText(
+      composeNovaTurn(reaction, interview.currentQuestion, interview.currentExample),
+      false
+    );
     if (!speech.ok || currentStep !== 'step3') return;
     await beginListeningTurn();
   }
-
   async function receiveAIResult(result) {
     if (currentStep !== 'step3') return;
 
@@ -5322,6 +5499,7 @@ main{width:100%;height:100%}
       return;
     }
 
+    applyDimensionUpdates(result);
     mergeAIProfile(result);
     interview.pendingResult = result;
     rememberTurn({
@@ -5337,7 +5515,9 @@ main{width:100%;height:100%}
         experience: result?.experience || [],
         barriers: result?.barriers || [],
         training_needs: result?.training_needs || []
-      }
+      },
+      coveredDimensions: result?.covered_dimensions || [],
+      skippedDimensions: result?.skipped_dimensions || []
     });
 
     if (aiTranscript) aiTranscript.textContent = result.transcript || 'No recibimos una transcripción.';
@@ -5387,6 +5567,34 @@ main{width:100%;height:100%}
     if (recordAnswerButton) recordAnswerButton.disabled = false;
   }
 
+  async function finishNovaInterview(event) {
+    event?.preventDefault();
+    if (!canFinishInterview() || currentStep !== 'step3') return;
+
+    if (step3Finish) {
+      step3Finish.disabled = true;
+      step3Finish.textContent = 'Finalizando…';
+    }
+
+    safeSave('despegaRegisterStep3', {
+      responseMode: 'adaptive_voice_ai',
+      answersCount: interview.answersCount,
+      usefulAnswersCount: interview.usefulAnswersCount,
+      profile: interview.profile,
+      dimensionStatus: interview.dimensionStatus,
+      completedAt: new Date().toISOString()
+    });
+    localStorage.setItem('despegaAIProfile', JSON.stringify(interview.profile));
+    localStorage.setItem('despegaConversationHistory', JSON.stringify(interview.conversationHistory || []));
+    persistDimensionStatus();
+
+    cleanupNova();
+    goTo('analysis');
+
+    if (step3Finish) step3Finish.textContent = 'Finalizar';
+  }
+
+  step3Finish?.addEventListener('click', finishNovaInterview);
   recordAnswerButton?.addEventListener('click', toggleRealRecording);
 
   async function flushVoiceQueue() {
