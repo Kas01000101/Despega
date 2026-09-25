@@ -1,3 +1,5 @@
+import { createClient } from "npm:@supabase/supabase-js@2.95.0";
+
 // DESPEGA+ — Supabase Edge Function for Nova
 // Required secret: GEMINI_API_KEY
 // Optional: GEMINI_MODEL, ALLOWED_ORIGINS (comma-separated exact origins)
@@ -20,8 +22,17 @@ const VALID_INTENTS = new Set([
   "skip_question",
 ]);
 const VALID_SUFFICIENCY = new Set(["sufficient", "partial", "insufficient"]);
+const VALID_FOLLOW_UP = new Set(["deepen", "clarify", "connect", "switch_dimension", "close"]);
 const PROFILE_FIELDS = ["goals", "interests", "skills", "experience", "barriers", "training_needs"];
 const rateBuckets = new Map<string, { count: number; resetAt: number }>();
+
+const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+const supabaseAdmin = supabaseUrl && serviceRoleKey
+  ? createClient(supabaseUrl, serviceRoleKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    })
+  : null;
 
 function configuredOrigins() {
   return new Set(
@@ -100,6 +111,14 @@ function sanitizeProfile(value: unknown) {
   return profile;
 }
 
+function mergeProfile(base: Record<string, string[]>, result: Record<string, unknown>) {
+  const merged: Record<string, string[]> = {};
+  for (const field of PROFILE_FIELDS) {
+    merged[field] = stringArray([...(base[field] || []), ...stringArray(result[field])]);
+  }
+  return merged;
+}
+
 function sanitizeHistory(value: unknown) {
   if (!Array.isArray(value)) return [];
   return value.slice(-MAX_HISTORY_TURNS).map((entry) => {
@@ -113,6 +132,18 @@ function sanitizeHistory(value: unknown) {
       novaReaction: text(row.novaReaction, 1000),
     };
   });
+}
+
+function parseJsonObject(value: FormDataEntryValue | null) {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(String(value));
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 function allowRequest(key: string) {
@@ -151,6 +182,7 @@ const responseSchema = {
     rephrased_question: { type: "STRING" },
     next_question: { type: "STRING" },
     example_response: { type: "STRING" },
+    follow_up_strategy: { type: "STRING" },
     profile_completeness: { type: "INTEGER" },
     should_finish: { type: "BOOLEAN" },
     final_message: { type: "STRING" },
@@ -161,9 +193,81 @@ const responseSchema = {
     "summary", "goals", "interests", "skills", "experience", "barriers", "training_needs",
     "evidence", "missing_dimensions", "answer_sufficiency", "clarification_needed",
     "clarification_question", "rephrased_question", "next_question", "example_response",
-    "profile_completeness", "should_finish", "final_message", "memory_summary",
+    "follow_up_strategy", "profile_completeness", "should_finish", "final_message", "memory_summary",
   ],
 };
+
+async function persistTurn(args: {
+  sessionId: string;
+  question: string;
+  profile: Record<string, string[]>;
+  onboardingData: Record<string, unknown> | null;
+  result: Record<string, any>;
+  usefulAnswersCount: number;
+  turnsCount: number;
+  durationMs: number | null;
+}) {
+  if (!supabaseAdmin || !args.sessionId) return false;
+
+  const now = new Date().toISOString();
+  const usefulCurrent =
+    args.result.turn_intent === "answer" &&
+    args.result.answer_sufficiency === "sufficient";
+  const nextUseful = args.usefulAnswersCount + (usefulCurrent ? 1 : 0);
+  const nextTurns = args.turnsCount + 1;
+  const status = args.result.should_finish
+    ? "completed"
+    : args.result.turn_intent === "pause"
+      ? "paused"
+      : "active";
+  const completedAt = args.result.should_finish ? now : null;
+  const mergedProfile = mergeProfile(args.profile, args.result);
+
+  const { error: sessionError } = await supabaseAdmin
+    .from("nova_sessions")
+    .upsert({
+      session_id: args.sessionId,
+      status,
+      useful_answers_count: nextUseful,
+      turns_count: nextTurns,
+      memory_summary: text(args.result.memory_summary, 1500),
+      completed_at: completedAt,
+      updated_at: now,
+    }, { onConflict: "session_id" });
+
+  if (sessionError) throw sessionError;
+
+  const profilePayload: Record<string, unknown> = {
+    session_id: args.sessionId,
+    nova_profile: mergedProfile,
+    profile_completeness: Math.max(0, Math.min(100, Number(args.result.profile_completeness) || 0)),
+    updated_at: now,
+  };
+  if (args.onboardingData) profilePayload.onboarding_data = args.onboardingData;
+
+  const { error: profileError } = await supabaseAdmin
+    .from("profiles")
+    .upsert(profilePayload, { onConflict: "session_id" });
+
+  if (profileError) throw profileError;
+
+  const { error: turnError } = await supabaseAdmin
+    .from("nova_turns")
+    .insert({
+      session_id: args.sessionId,
+      question: args.question,
+      transcript: text(args.result.transcript, 3000),
+      summary: text(args.result.summary, 1500),
+      turn_intent: text(args.result.turn_intent, 100),
+      nova_reaction: text(args.result.nova_reaction, 1000),
+      follow_up_strategy: text(args.result.follow_up_strategy, 100),
+      answer_sufficiency: text(args.result.answer_sufficiency, 100),
+      duration_ms: args.durationMs,
+    });
+
+  if (turnError) throw turnError;
+  return true;
+}
 
 Deno.serve(async (req: Request) => {
   const origin = req.headers.get("Origin");
@@ -185,6 +289,7 @@ Deno.serve(async (req: Request) => {
       service: "despega-ai",
       model: MODEL,
       geminiConfigured: Boolean(Deno.env.get("GEMINI_API_KEY")),
+      databaseConfigured: Boolean(supabaseAdmin),
     }, 200, origin);
   }
 
@@ -215,6 +320,9 @@ Deno.serve(async (req: Request) => {
     }
 
     const sessionId = text(form.get("session_id"), 120);
+    if (!sessionId) {
+      return json({ error: "SESSION_ID_REQUIRED" }, 400, origin);
+    }
     if (!allowRequest(sessionId)) {
       return json({
         error: "RATE_LIMITED",
@@ -225,8 +333,12 @@ Deno.serve(async (req: Request) => {
     const question = text(form.get("question"), MAX_QUESTION_CHARS);
     const questionId = text(form.get("question_id"), MAX_QUESTION_ID_CHARS);
     const currentExample = text(form.get("current_example"), MAX_EXAMPLE_CHARS);
-    const usefulAnswersCount = Math.max(0, Math.min(7, Number(form.get("answers_count") || 0) || 0));
-    const turnsCount = Math.max(0, Math.min(7, Number(form.get("turns_count") || 0) || 0));
+    const usefulAnswersCount = Math.max(0, Math.min(50, Number(form.get("answers_count") || 0) || 0));
+    const turnsCount = Math.max(0, Math.min(100, Number(form.get("turns_count") || 0) || 0));
+    const durationMsRaw = Number(form.get("duration_ms") || 0);
+    const durationMs = Number.isFinite(durationMsRaw) && durationMsRaw > 0
+      ? Math.min(durationMsRaw, 10 * 60_000)
+      : null;
 
     let profile: Record<string, string[]> = sanitizeProfile({});
     let history: unknown[] = [];
@@ -239,6 +351,7 @@ Deno.serve(async (req: Request) => {
       history = sanitizeHistory(JSON.parse(String(form.get("conversation_history") || "[]")));
     } catch {}
 
+    const onboardingData = parseJsonObject(form.get("onboarding_data"));
     const bytes = new Uint8Array(await audio.arrayBuffer());
     const audioBase64 = toBase64(bytes);
 
@@ -247,8 +360,8 @@ Eres NOVA, la agente conversacional de DESPEGA+, una plataforma de orientación 
 
 PERSONALIDAD:
 - Cálida, optimista, curiosa y breve.
-- Nunca infantilices ni juzgues.
-- Si el usuario expresa una dificultad, responde con empatía; no uses entusiasmo exagerado.
+- Natural y conversacional; no suenes como formulario.
+- Nunca infantilices, juzgues ni uses entusiasmo exagerado ante dificultades.
 - Haz UNA sola pregunta por turno.
 
 OBJETIVO:
@@ -258,9 +371,39 @@ Construir progresivamente un perfil con evidencia sobre:
 3) habilidades o experiencia,
 4) barreras o necesidades.
 
-MEMORIA:
-Usa el historial para recordar preguntas y respuestas previas.
-No repitas información ya resuelta salvo que necesites aclararla.
+MEMORIA Y CONTINUIDAD:
+- Lee primero la respuesta actual y el historial reciente.
+- Identifica qué información nueva acaba de aportar el usuario.
+- No preguntes algo que ya esté explícito en la respuesta o en la memoria.
+- No formules una pregunta solo porque exista una dimensión pendiente.
+- Cuando el usuario mencione algo útil, profundiza naturalmente antes de cambiar de tema.
+- Cambia de dimensión solo cuando el hilo actual ya esté suficientemente claro o cuando falte una dimensión crítica.
+- La siguiente pregunta debe poder reconocerse como una reacción a lo que el usuario acaba de decir.
+- Evita preguntas genéricas que podrías haber hecho sin escuchar la respuesta.
+- Si puedes conectar lo nuevo con algo dicho antes, hazlo de forma breve y natural.
+
+ESTRATEGIA DE SEGUIMIENTO:
+follow_up_strategy debe ser EXACTAMENTE uno de:
+- deepen: profundizar en algo relevante recién mencionado.
+- clarify: aclarar una respuesta ambigua o insuficiente.
+- connect: conectar la respuesta actual con información previa.
+- switch_dimension: cambiar a otra dimensión realmente pendiente.
+- close: cerrar porque ya hay suficiente información.
+
+EJEMPLOS:
+Usuario: "Me gustaría aprender programación."
+MAL: "¿Has programado antes?"
+BIEN: "¿Qué te gustaría llegar a crear o hacer con programación?"
+
+Usuario: "Quiero hacer aplicaciones."
+BIEN: "¿Hay algún problema o necesidad que te gustaría resolver con una aplicación?"
+
+Usuario: "Quiero ayudar a estudiantes a encontrar oportunidades."
+BIEN: "¿Qué tipo de oportunidades te gustaría que pudieran encontrar primero?"
+
+Usuario: "Me gustan los videojuegos."
+MAL: "¿Cuáles son tus intereses?"
+BIEN: "¿Te atrae más jugarlos o también te gustaría aprender cómo se crean?"
 
 INTENCIONES:
 Clasifica turn_intent EXACTAMENTE como uno de:
@@ -274,17 +417,17 @@ REGLAS CRÍTICAS:
 - Las intenciones de control NO agregan información al perfil.
 - Para una intención de control, deja goals/interests/skills/experience/barriers/training_needs/evidence vacíos.
 - No infieras atributos sensibles ni condiciones que el usuario no haya declarado.
-- Si la respuesta es vaga, usa clarification_needed=true y formula una aclaración breve.
+- Si la respuesta es vaga, usa clarification_needed=true, follow_up_strategy=clarify y formula una aclaración breve.
 - answer_sufficiency solo puede ser sufficient, partial o insufficient.
 - Si es insufficient, no extraigas datos nuevos del perfil.
 - Solo usa should_finish=true cuando, contando esta respuesta, existan al menos 3 respuestas útiles y haya evidencia de objetivo + interés + (habilidad o experiencia) + barrera/necesidad.
-- Si faltan datos, genera next_question sobre la dimensión faltante más importante.
+- Si faltan datos y el hilo actual ya está claro, usa switch_dimension hacia la dimensión faltante más importante.
 - profile_completeness debe estar entre 0 y 100.
 
 PREGUNTA ACTUAL: ${question}
 ID: ${questionId}
 RESPUESTAS ÚTILES PREVIAS: ${usefulAnswersCount}
-TURNOS DE RESPUESTA PREVIOS: ${turnsCount}
+TURNOS PREVIOS: ${turnsCount}
 EJEMPLO ACTUAL: ${currentExample}
 PERFIL: ${JSON.stringify(profile)}
 HISTORIAL RECIENTE: ${JSON.stringify(history)}
@@ -312,7 +455,7 @@ Devuelve solo el JSON solicitado por el schema.
           ],
         }],
         generationConfig: {
-          temperature: 0.3,
+          temperature: 0.35,
           responseMimeType: "application/json",
           responseSchema,
         },
@@ -339,7 +482,7 @@ Devuelve solo el JSON solicitado por el schema.
       return json({ error: "EMPTY_GEMINI_OUTPUT" }, 502, origin);
     }
 
-    let result: any;
+    let result: Record<string, any>;
     try {
       result = JSON.parse(output);
     } catch {
@@ -352,6 +495,9 @@ Devuelve solo el JSON solicitado por el schema.
     result.answer_sufficiency = VALID_SUFFICIENCY.has(String(result.answer_sufficiency))
       ? String(result.answer_sufficiency)
       : "sufficient";
+    result.follow_up_strategy = VALID_FOLLOW_UP.has(String(result.follow_up_strategy))
+      ? String(result.follow_up_strategy)
+      : (result.clarification_needed ? "clarify" : "deepen");
     result.profile_completeness = Math.max(0, Math.min(100, Number(result.profile_completeness) || 0));
     result.clarification_needed = Boolean(result.clarification_needed);
     result.should_finish = Boolean(result.should_finish);
@@ -374,6 +520,7 @@ Devuelve solo el JSON solicitado por el schema.
       for (const field of PROFILE_FIELDS) result[field] = [];
       result.evidence = [];
       result.should_finish = false;
+      result.follow_up_strategy = "clarify";
     }
 
     if (result.turn_intent !== "answer") {
@@ -387,29 +534,54 @@ Devuelve solo el JSON solicitado por el schema.
       if (result.turn_intent === "repeat_question") {
         result.control_response ||= "Claro, te la repito.";
         result.next_question = question;
+        result.follow_up_strategy = "clarify";
       } else if (result.turn_intent === "repeat_example") {
         result.control_response ||= "Claro, escucha el ejemplo otra vez.";
         result.example_response = currentExample;
         result.next_question = question;
+        result.follow_up_strategy = "clarify";
       } else if (result.turn_intent === "explain_question") {
         result.control_response ||= "Claro. Te la digo de una forma más sencilla.";
         result.next_question = result.rephrased_question || question;
+        result.follow_up_strategy = "clarify";
       } else if (result.turn_intent === "pause") {
         result.control_response ||= "Claro. Cuando quieras, continuamos.";
         result.next_question = question;
+        result.follow_up_strategy = "close";
       } else if (result.turn_intent === "skip_question") {
         result.control_response ||= "Está bien, podemos pasar a otra pregunta.";
         result.next_question ||= "Cuéntame sobre otro aspecto que consideres importante para decidir tu siguiente paso.";
+        result.follow_up_strategy = "switch_dimension";
       }
     }
 
     if (result.turn_intent === "answer" && result.should_finish) {
       const currentIsUseful = result.answer_sufficiency === "sufficient";
       const usefulIncludingCurrent = usefulAnswersCount + (currentIsUseful ? 1 : 0);
-      if (usefulIncludingCurrent < 3) result.should_finish = false;
+      if (usefulIncludingCurrent < 3) {
+        result.should_finish = false;
+      } else {
+        result.follow_up_strategy = "close";
+      }
     }
 
-    return json(result, 200, origin);
+    let persistenceOk = false;
+    try {
+      persistenceOk = await persistTurn({
+        sessionId,
+        question,
+        profile,
+        onboardingData,
+        result,
+        usefulAnswersCount,
+        turnsCount,
+        durationMs,
+      });
+    } catch (error) {
+      console.error("Persistence error", error);
+    }
+
+    return json({ ...result, persistence_ok: persistenceOk }, 200, origin);
   } catch (error) {
     console.error(error);
     return json({
