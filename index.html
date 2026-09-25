@@ -3020,7 +3020,7 @@ main{width:100%;height:100%}
   'use strict';
 
   const $ = (selector) => document.querySelector(selector);
-  const $$ = (selector) => Array.from(document.querySelectorAll(selector));
+  const $ = (selector) => Array.from(document.querySelectorAll(selector));
 
 
   // ============================================================
@@ -3071,7 +3071,7 @@ main{width:100%;height:100%}
   const selectedAreas = new Set();
 
   function setAnalysisStage(progress){
-    const stages = $$('.analysis-stage');
+    const stages = $('.analysis-stage');
     if (!stages.length) return;
 
     let activeIndex = 0;
@@ -3337,6 +3337,8 @@ main{width:100%;height:100%}
   if (registerButton) {
     registerButton.addEventListener('click', (event) => {
       event.preventDefault();
+      initializeNovaAudio();
+      startNewInterviewSession();
       animateThen(registerButton, 'forward', () => goTo('step1'));
     });
   }
@@ -3481,7 +3483,7 @@ main{width:100%;height:100%}
   }
 
   // ---------- CHIPS ----------
-  $$('[data-single-group]').forEach((group) => {
+  $('[data-single-group]').forEach((group) => {
     group.addEventListener('click', (event) => {
       const button = event.target.closest('.choice-chip');
       if (!button) return;
@@ -3489,7 +3491,7 @@ main{width:100%;height:100%}
     });
   });
 
-  $$('[data-multi-group]').forEach((group) => {
+  $('[data-multi-group]').forEach((group) => {
     group.addEventListener('click', (event) => {
       const button = event.target.closest('.choice-chip');
       if (!button) return;
@@ -3507,6 +3509,7 @@ main{width:100%;height:100%}
   if (step2Form) {
     step2Form.addEventListener('submit', (event) => {
       event.preventDefault();
+      initializeNovaAudio();
 
       safeSave('despegaRegisterStep2', {
         educationLevel: $('#educationLevel')?.value || '',
@@ -3659,9 +3662,16 @@ main{width:100%;height:100%}
     sessionStorage.setItem('despegaAgentWelcomed', interview.sessionId);
     const name = getInterviewFirstName();
     setAgentEmotion('happy');
-    const welcome = `${name ? `Hola, ${name}.` : 'Hola.'} Encantada de conocerte. Me llamo Nova y voy a acompañarte para conocerte un poquito mejor. ${interview.currentQuestion}`;
-    const stillActive = await speakText(welcome, false);
-    if (stillActive && currentStep === 'step3' && interview.autoListenEnabled) {
+    const welcome = (name ? 'Hola, ' + name + '. ' : 'Hola. ')
+      + 'Encantada de conocerte. Me llamo Nova y voy a acompañarte para conocerte un poquito mejor. '
+      + interview.currentQuestion;
+
+    const speech = await speakText(welcome, false);
+    if (
+      speech.ok &&
+      currentStep === 'step3' &&
+      interview.autoListenEnabled
+    ) {
       await beginListeningTurn();
     }
   }
@@ -3835,31 +3845,38 @@ main{width:100%;height:100%}
 
     if (intent === 'repeat_question') {
       setVoiceStatus('Nova repetirá la misma pregunta.', 'ok');
-      await speakText(String(result?.control_response || 'Claro, te la repito.'), false);
-      await speakText(interview.currentQuestion, false);
-      await beginListeningTurn();
+      const speech = await speakText(
+        composeNovaTurn(result?.control_response || 'Claro, te la repito.', interview.currentQuestion),
+        false
+      );
+      if (speech.ok) await beginListeningTurn();
       return true;
     }
 
     if (intent === 'repeat_example') {
       setVoiceStatus('Nova repetirá el ejemplo.', 'ok');
-      await speakText(String(result?.control_response || 'Claro, escucha este ejemplo.'), false);
-      await speakText(interview.currentExample, true);
-      await beginListeningTurn();
+      const speech = await speakText(
+        composeNovaTurn(
+          result?.control_response || 'Claro, escucha este ejemplo.',
+          interview.currentExample,
+          interview.currentQuestion
+        ),
+        true
+      );
+      if (speech.ok) await beginListeningTurn();
       return true;
     }
 
     if (intent === 'explain_question') {
       const response = String(result?.control_response || 'Claro. Te la digo de una forma más sencilla.').trim();
       setVoiceStatus('Nova está aclarando la pregunta.', 'ok');
-      await speakText(response, false);
       if (String(result?.rephrased_question || '').trim()) {
         interview.currentQuestion = String(result.rephrased_question).trim();
         localStorage.setItem('despegaCurrentQuestion', interview.currentQuestion);
         refreshInterviewUI();
       }
-      await speakText(interview.currentQuestion, false);
-      await beginListeningTurn();
+      const speech = await speakText(composeNovaTurn(response, interview.currentQuestion), false);
+      if (speech.ok) await beginListeningTurn();
       return true;
     }
 
@@ -3878,7 +3895,7 @@ main{width:100%;height:100%}
     if (intent === 'skip_question') {
       const next = String(result?.next_question || '').trim();
       if (next) {
-        interview.questionId = `adaptive-${interview.answersCount + 1}-skip`;
+        interview.questionId = 'adaptive-' + (interview.answersCount + 1) + '-skip';
         interview.currentQuestion = next;
         interview.currentExample = String(result?.example_response || '').trim() || interview.currentExample;
         localStorage.setItem('despegaCurrentQuestionId', interview.questionId);
@@ -3886,9 +3903,11 @@ main{width:100%;height:100%}
         localStorage.setItem('despegaCurrentExample', interview.currentExample);
         refreshInterviewUI();
       }
-      await speakText(String(result?.control_response || 'Está bien, podemos pasar a otra pregunta.'), false);
-      if (next) await speakText(next, false);
-      await beginListeningTurn();
+      const speech = await speakText(
+        composeNovaTurn(result?.control_response || 'Está bien, podemos pasar a otra pregunta.', next),
+        false
+      );
+      if (speech.ok) await beginListeningTurn();
       return true;
     }
 
@@ -3897,16 +3916,101 @@ main{width:100%;height:100%}
 
   // -------- TTS provider: Kokoro cuando exista; SpeechSynthesis como fallback real --------
   let currentSpokenAudio = null;
+  let currentSpeechUtterance = null;
+  let speechOperationId = 0;
+  let browserVoices = [];
+  let browserVoicesPromise = null;
+
+  function loadBrowserVoices(timeoutMs = 1500) {
+    if (!('speechSynthesis' in window)) return Promise.resolve([]);
+    const immediate = speechSynthesis.getVoices();
+    if (immediate.length) {
+      browserVoices = immediate;
+      console.log('[NOVA TTS] voices_loaded', { count: immediate.length });
+      return Promise.resolve(immediate);
+    }
+    if (browserVoicesPromise) return browserVoicesPromise;
+
+    browserVoicesPromise = new Promise((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        const voices = speechSynthesis.getVoices();
+        browserVoices = voices;
+        speechSynthesis.removeEventListener?.('voiceschanged', onVoicesChanged);
+        clearTimeout(timer);
+        browserVoicesPromise = null;
+        console.log('[NOVA TTS] voices_loaded', { count: voices.length });
+        resolve(voices);
+      };
+      const onVoicesChanged = () => finish();
+      const timer = setTimeout(finish, timeoutMs);
+      speechSynthesis.addEventListener?.('voiceschanged', onVoicesChanged, { once: true });
+    });
+
+    return browserVoicesPromise;
+  }
+
+  function selectBrowserVoice(voices = browserVoices) {
+    if (!Array.isArray(voices) || !voices.length) return null;
+    const normalizeLang = (value) => String(value || '').replace('_', '-').toLowerCase();
+    const exact = (lang) => voices.find((voice) => normalizeLang(voice.lang) === lang);
+    return exact('es-pe')
+      || exact('es-mx')
+      || exact('es-es')
+      || voices.find((voice) => normalizeLang(voice.lang).startsWith('es-'))
+      || voices.find((voice) => /Spanish|Español/i.test(String(voice.name || '')))
+      || voices.find((voice) => voice.default)
+      || voices[0]
+      || null;
+  }
+
+  async function initializeNovaAudio() {
+    if (!('speechSynthesis' in window)) return false;
+    try {
+      speechSynthesis.resume?.();
+      await loadBrowserVoices();
+      return true;
+    } catch (error) {
+      console.warn('[NOVA TTS] init_failed', error);
+      return false;
+    }
+  }
+
+  function ttsResult(ok, reason, provider = 'browser') {
+    return { ok: Boolean(ok), reason: String(reason || ''), provider };
+  }
+
+  function composeNovaTurn(...parts) {
+    const clean = parts
+      .map((part) => String(part || '').trim())
+      .filter(Boolean);
+    const unique = clean.filter((part, index) =>
+      clean.findIndex((candidate) => candidate.toLowerCase() === part.toLowerCase()) === index
+    );
+    return unique.join(' ');
+  }
 
   function stopSpeaking() {
+    speechOperationId += 1;
+
     if (currentSpokenAudio) {
+      currentSpokenAudio.onended = null;
+      currentSpokenAudio.onerror = null;
       currentSpokenAudio.pause();
       try { URL.revokeObjectURL(currentSpokenAudio.src); } catch {}
       currentSpokenAudio = null;
     }
-    if ('speechSynthesis' in window) speechSynthesis.cancel();
+
+    currentSpeechUtterance = null;
+    if ('speechSynthesis' in window) {
+      try { speechSynthesis.cancel(); } catch {}
+    }
+
     exampleAudioCard?.classList.remove('playing');
     speakerPromptButton?.classList.remove('speaking');
+
     if (currentStep === 'step3') {
       if (interview.mediaRecorder?.state === 'recording') setAgentState('listening');
       else if (!interview.isProcessing) setAgentState('idle');
@@ -3989,45 +4093,126 @@ main{width:100%;height:100%}
     return true;
   }
 
-  async function browserSpeak(text) {
-    if (!('speechSynthesis' in window)) throw new Error('Este navegador no tiene síntesis de voz disponible.');
-    return new Promise((resolve, reject) => {
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'es-PE';
-      utterance.rate = 0.95;
-      const voices = speechSynthesis.getVoices();
-      const spanish = voices.find(v => /^es[-_]/i.test(v.lang)) || voices.find(v => /Spanish|Español/i.test(v.name));
-      if (spanish) utterance.voice = spanish;
-      utterance.onend = resolve;
-      utterance.onerror = (event) => reject(event.error || new Error('No se pudo reproducir la voz.'));
-      speechSynthesis.speak(utterance);
+  async function browserSpeak(text, operationId) {
+    if (!('speechSynthesis' in window) || !window.SpeechSynthesisUtterance) {
+      console.warn('[NOVA TTS] unavailable');
+      return ttsResult(false, 'unavailable');
+    }
+
+    const voices = await loadBrowserVoices();
+    if (operationId !== speechOperationId) return ttsResult(false, 'canceled');
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    currentSpeechUtterance = utterance;
+    utterance.lang = 'es-PE';
+    utterance.rate = 0.95;
+    const selectedVoice = selectBrowserVoice(voices);
+    if (selectedVoice) {
+      utterance.voice = selectedVoice;
+      utterance.lang = selectedVoice.lang || utterance.lang;
+    }
+
+    console.log('[NOVA TTS] speak_start', {
+      provider: 'browser',
+      voice: selectedVoice?.name || 'default',
+      lang: utterance.lang
+    });
+
+    return new Promise((resolve) => {
+      let settled = false;
+      const timeoutMs = Math.min(45000, Math.max(9000, String(text || '').length * 130));
+      const finish = (result) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (currentSpeechUtterance === utterance) currentSpeechUtterance = null;
+        resolve(result);
+      };
+
+      const timer = setTimeout(() => {
+        if (operationId === speechOperationId) {
+          try { speechSynthesis.cancel(); } catch {}
+        }
+        console.warn('[NOVA TTS] timeout');
+        finish(ttsResult(false, 'timeout'));
+      }, timeoutMs);
+
+      utterance.onend = () => {
+        if (operationId !== speechOperationId) {
+          finish(ttsResult(false, 'canceled'));
+          return;
+        }
+        console.log('[NOVA TTS] speak_end', { provider: 'browser' });
+        finish(ttsResult(true, 'ended'));
+      };
+
+      utterance.onerror = (event) => {
+        const reason = String(event?.error || 'synthesis-failed');
+        const intentional = operationId !== speechOperationId
+          || reason === 'canceled'
+          || reason === 'interrupted';
+
+        if (intentional) {
+          console.log('[NOVA TTS]', reason);
+          finish(ttsResult(false, 'canceled'));
+          return;
+        }
+
+        console.error('[NOVA TTS]', reason, event);
+        finish(ttsResult(false, reason));
+      };
+
+      try {
+        speechSynthesis.resume?.();
+        speechSynthesis.speak(utterance);
+      } catch (error) {
+        console.error('[NOVA TTS] speak_failed', error);
+        finish(ttsResult(false, 'speak-failed'));
+      }
     });
   }
 
   async function speakText(text, markExample = false) {
     const message = String(text || '').trim();
-    if (!message || currentStep !== 'step3') return false;
+    if (!message || currentStep !== 'step3') return ttsResult(false, 'inactive');
 
     const lifecycle = interview.lifecycleId;
     stopSpeaking();
-    if (currentStep !== 'step3' || lifecycle !== interview.lifecycleId) return false;
+    const operationId = speechOperationId;
+
+    if (currentStep !== 'step3' || lifecycle !== interview.lifecycleId) {
+      return ttsResult(false, 'inactive');
+    }
 
     setAgentState('speaking');
     speakerPromptButton?.classList.add('speaking');
     if (markExample) exampleAudioCard?.classList.add('playing');
 
+    let result = ttsResult(false, 'unavailable');
     try {
-      const usedKokoro = await kokoroSpeak(message).catch(() => false);
-      if (!usedKokoro && currentStep === 'step3' && lifecycle === interview.lifecycleId) {
-        await browserSpeak(message);
+      const usedKokoro = await kokoroSpeak(message).catch((error) => {
+        console.warn('[NOVA TTS] kokoro_failed', error);
+        return false;
+      });
+
+      if (usedKokoro) {
+        result = operationId === speechOperationId
+          ? ttsResult(true, 'ended', 'kokoro')
+          : ttsResult(false, 'canceled', 'kokoro');
+      } else if (
+        currentStep === 'step3' &&
+        lifecycle === interview.lifecycleId &&
+        operationId === speechOperationId
+      ) {
+        result = await browserSpeak(message, operationId);
       }
     } catch (error) {
-      if (currentStep === 'step3' && lifecycle === interview.lifecycleId) {
-        showToast('No se pudo reproducir el audio en este navegador.');
-      }
+      console.error('[NOVA TTS] unexpected_error', error);
+      result = ttsResult(false, 'unexpected');
     } finally {
       exampleAudioCard?.classList.remove('playing');
       speakerPromptButton?.classList.remove('speaking');
+
       if (currentStep === 'step3' && lifecycle === interview.lifecycleId) {
         if (interview.mediaRecorder?.state === 'recording') setAgentState('listening');
         else if (interview.isProcessing) setAgentState('thinking');
@@ -4035,7 +4220,23 @@ main{width:100%;height:100%}
       }
     }
 
-    return currentStep === 'step3' && lifecycle === interview.lifecycleId;
+    if (
+      !result.ok &&
+      currentStep === 'step3' &&
+      lifecycle === interview.lifecycleId &&
+      !['canceled', 'inactive'].includes(result.reason)
+    ) {
+      if (result.reason === 'not-allowed') {
+        setVoiceStatus('El navegador bloqueó la voz automática. Puedes tocar el altavoz para reintentar o responder con el micrófono.', 'error');
+      } else if (result.reason === 'unavailable') {
+        setVoiceStatus('La voz automática no está disponible. La pregunta sigue visible y puedes responder con el micrófono.', 'error');
+      } else {
+        setVoiceStatus('No pudimos reproducir la voz de Nova. La pregunta sigue visible y puedes continuar.', 'error');
+      }
+      if (recordAnswerButton) recordAnswerButton.disabled = false;
+    }
+
+    return result;
   }
 
   playExampleButton?.addEventListener('click', () => {
@@ -4044,8 +4245,9 @@ main{width:100%;height:100%}
   });
   speakerPromptButton?.addEventListener('click', async () => {
     if (speakerPromptButton?.classList.contains('speaking')) return stopSpeaking();
-    const stillActive = await speakText(interview.currentQuestion, false);
-    if (stillActive && interview.autoListenEnabled) await beginListeningTurn();
+    await initializeNovaAudio();
+    const speech = await speakText(interview.currentQuestion, false);
+    if (speech.ok && interview.autoListenEnabled) await beginListeningTurn();
   });
 
   // -------- Gemini via Supabase Edge Function --------
@@ -4225,9 +4427,9 @@ main{width:100%;height:100%}
       if (recordHelper) recordHelper.textContent = 'Tómate tu tiempo. Nova volverá a escucharte.';
       setVoiceStatus('No detecté voz. Te doy un momento más.', 'ok');
 
-      const stillActive = await speakText('¿Sigues ahí? Tómate tu tiempo. Cuando quieras, cuéntame tu respuesta.', false);
+      const speech = await speakText('¿Sigues ahí? Tómate tu tiempo. Cuando quieras, cuéntame tu respuesta.', false);
       if (
-        stillActive &&
+        speech.ok &&
         currentStep === 'step3' &&
         lifecycle === interview.lifecycleId &&
         interview.autoListenEnabled
@@ -4239,12 +4441,12 @@ main{width:100%;height:100%}
 
     interview.autoListenEnabled = false;
     setAgentEmotion('calm');
-    const stillActive = await speakText('Podemos continuar cuando quieras. Toca el micrófono para seguir.', false);
-    if (stillActive && currentStep === 'step3' && lifecycle === interview.lifecycleId) {
+    const speech = await speakText('Podemos continuar cuando quieras. Toca el micrófono para seguir.', false);
+    if (currentStep === 'step3' && lifecycle === interview.lifecycleId) {
       setAgentState('paused');
       if (recordCaption) recordCaption.textContent = 'Conversación pausada';
       if (recordHelper) recordHelper.textContent = 'Toca el micrófono cuando quieras continuar.';
-      setVoiceStatus('Conversación pausada.', 'ok');
+      setVoiceStatus('Conversación pausada.', speech.ok ? 'ok' : 'error');
       if (recordAnswerButton) recordAnswerButton.disabled = false;
     }
   }
@@ -4711,7 +4913,7 @@ main{width:100%;height:100%}
     };
   }
 
-  async function advanceInterviewAutomatically(result) {
+  async function advanceInterviewAutomatically(result, reaction = '') {
     if (currentStep !== 'step3') return;
 
     interview.answersCount += 1;
@@ -4732,7 +4934,7 @@ main{width:100%;height:100%}
       setAgentEmotion('celebrating');
       setAgentState('celebrating');
       if (aiAutoNext) aiAutoNext.textContent = 'Nova ya tiene lo necesario para preparar tu ruta.';
-      await speakText(finalMessage, false);
+      await speakText(composeNovaTurn(reaction, finalMessage), false);
       if (currentStep !== 'step3') return;
 
       safeSave('despegaRegisterStep3', {
@@ -4748,8 +4950,8 @@ main{width:100%;height:100%}
 
     const followUp = chooseFollowUp(result);
     interview.questionId = followUp.clarification
-      ? `clarify-${interview.answersCount + 1}`
-      : `adaptive-${interview.answersCount + 1}`;
+      ? 'clarify-' + (interview.answersCount + 1)
+      : 'adaptive-' + (interview.answersCount + 1);
     interview.currentQuestion = followUp.question;
     interview.currentExample = followUp.example;
     localStorage.setItem('despegaCurrentQuestionId', interview.questionId);
@@ -4764,9 +4966,9 @@ main{width:100%;height:100%}
       if (aiAutoNext) aiAutoNext.textContent = 'Nova continuará automáticamente…';
     }
 
-    const stillActive = await speakText(interview.currentQuestion, false);
-    if (!stillActive || currentStep !== 'step3') return;
     refreshInterviewUI();
+    const speech = await speakText(composeNovaTurn(reaction, interview.currentQuestion), false);
+    if (!speech.ok || currentStep !== 'step3') return;
     await beginListeningTurn();
   }
 
@@ -4787,8 +4989,12 @@ main{width:100%;height:100%}
       summary: String(result?.summary || '').trim(),
       novaReaction: String(result?.nova_reaction || '').trim(),
       extracted: {
-        goals: result?.goals || [], interests: result?.interests || [], skills: result?.skills || [],
-        experience: result?.experience || [], barriers: result?.barriers || [], training_needs: result?.training_needs || []
+        goals: result?.goals || [],
+        interests: result?.interests || [],
+        skills: result?.skills || [],
+        experience: result?.experience || [],
+        barriers: result?.barriers || [],
+        training_needs: result?.training_needs || []
       }
     });
 
@@ -4796,7 +5002,9 @@ main{width:100%;height:100%}
     renderInsights(result);
 
     const sufficiency = String(result?.answer_sufficiency || 'sufficient').toLowerCase();
-    const needsMore = Boolean(result?.clarification_needed) || sufficiency === 'insufficient' || sufficiency === 'partial';
+    const needsMore = Boolean(result?.clarification_needed)
+      || sufficiency === 'insufficient'
+      || sufficiency === 'partial';
     const emotion = needsMore ? 'curious' : normalizeNovaEmotion(result);
     setAgentEmotion(emotion);
     setAgentState(needsMore ? 'curious' : 'celebrating');
@@ -4816,14 +5024,13 @@ main{width:100%;height:100%}
     micPanel.hidden = true;
     setVoiceStatus('Respuesta procesada.', 'ok');
 
-    const reaction = String(result?.nova_reaction || (needsMore
-      ? 'Está bien. Para poder ayudarte mejor, necesito un poquito más de información.'
-      : 'Gracias por contármelo.')).trim();
+    const reaction = String(result?.nova_reaction || (
+      needsMore
+        ? 'Para poder ayudarte mejor, necesito un poquito más de información.'
+        : 'Gracias por contármelo.'
+    )).trim();
 
-    const stillActive = await speakText(reaction, false);
-    if (!stillActive || currentStep !== 'step3') return;
-
-    await advanceInterviewAutomatically(result);
+    await advanceInterviewAutomatically(result, reaction);
   }
 
   function resetForRecording() {
