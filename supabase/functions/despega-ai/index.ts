@@ -8,8 +8,9 @@ const MAX_AUDIO_BYTES = 8 * 1024 * 1024;
 const MAX_QUESTION_CHARS = 1000;
 const MAX_QUESTION_ID_CHARS = 100;
 const MAX_EXAMPLE_CHARS = 1500;
-const MAX_HISTORY_TURNS = 3;
+const MAX_HISTORY_TURNS = 5;
 const MAX_PROFILE_ITEMS = 30;
+const MAX_BARRIER_DETAILS = 12;
 const RATE_LIMIT_PER_MINUTE = 20;
 const MODEL = Deno.env.get("GEMINI_MODEL") || "gemini-3.8-flash";
 const FALLBACK_MODEL = Deno.env.get("GEMINI_FALLBACK_MODEL") || "gemini-3.5-flash-lite";
@@ -27,6 +28,24 @@ const VALID_FOLLOW_UP = new Set(["deepen", "clarify", "connect", "switch_dimensi
 const PROFILE_FIELDS = ["goals", "interests", "skills", "experience", "barriers", "training_needs"];
 const CORE_DIMENSIONS = ["goal", "interests", "skills", "experience", "barriers"] as const;
 const VALID_DIMENSIONS = new Set<string>(CORE_DIMENSIONS);
+const VALID_BARRIER_TYPES = new Set([
+  "economic",
+  "connectivity",
+  "education",
+  "transport",
+  "geographic",
+  "time",
+  "family_responsibilities",
+  "information",
+  "confidence",
+  "gender_stereotype",
+  "discrimination",
+  "accessibility",
+  "work_experience",
+  "digital_skills",
+  "documentation",
+  "other",
+]);
 const QUESTION_MAP: Record<string, { question: string; example: string }> = {
   goal: {
     question: "¿Qué te gustaría hacer o aprender en este momento?",
@@ -46,7 +65,7 @@ const QUESTION_MAP: Record<string, { question: string; example: string }> = {
   },
   barriers: {
     question: "¿Hay algo que hoy te dificulte avanzar hacia lo que quieres?",
-    example: "Por ejemplo: falta de tiempo, dinero, internet, transporte, responsabilidades en casa o no saber por dónde empezar.",
+    example: "Por ejemplo: falta de tiempo o dinero, responsabilidades en casa, transporte, internet, inseguridad, falta de experiencia o no saber por dónde empezar.",
   },
 };
 const rateBuckets = new Map<string, { count: number; resetAt: number }>();
@@ -129,6 +148,36 @@ function stringArray(value: unknown, maxItems = MAX_PROFILE_ITEMS) {
   return result;
 }
 
+type BarrierDetail = {
+  type: string;
+  description: string;
+  source_evidence: string;
+};
+
+function sanitizeBarrierDetails(value: unknown, maxItems = MAX_BARRIER_DETAILS): BarrierDetail[] {
+  if (!Array.isArray(value)) return [];
+  const result: BarrierDetail[] = [];
+  const seen = new Set<string>();
+
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+    const rawType = String(row.type || "").trim().toLowerCase();
+    const type = VALID_BARRIER_TYPES.has(rawType) ? rawType : "other";
+    const description = text(row.description, 500);
+    const sourceEvidence = text(row.source_evidence, 500);
+    if (!description || !sourceEvidence) continue;
+
+    const key = `${type}|${description.toLowerCase()}|${sourceEvidence.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push({ type, description, source_evidence: sourceEvidence });
+    if (result.length >= maxItems) break;
+  }
+
+  return result;
+}
+
 function sanitizeProfile(value: unknown) {
   const source = value && typeof value === "object" ? value as Record<string, unknown> : {};
   const profile: Record<string, string[]> = {};
@@ -137,10 +186,11 @@ function sanitizeProfile(value: unknown) {
 }
 
 function mergeProfile(base: Record<string, string[]>, result: Record<string, unknown>) {
-  const merged: Record<string, string[]> = {};
+  const merged: Record<string, unknown> = {};
   for (const field of PROFILE_FIELDS) {
     merged[field] = stringArray([...(base[field] || []), ...stringArray(result[field])]);
   }
+  merged.barrier_details = sanitizeBarrierDetails(result.barrier_details);
   return merged;
 }
 
@@ -198,6 +248,18 @@ const responseSchema = {
     skills: { type: "ARRAY", items: { type: "STRING" } },
     experience: { type: "ARRAY", items: { type: "STRING" } },
     barriers: { type: "ARRAY", items: { type: "STRING" } },
+    barrier_details: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          type: { type: "STRING" },
+          description: { type: "STRING" },
+          source_evidence: { type: "STRING" },
+        },
+        required: ["type", "description", "source_evidence"],
+      },
+    },
     training_needs: { type: "ARRAY", items: { type: "STRING" } },
     evidence: { type: "ARRAY", items: { type: "STRING" } },
     missing_dimensions: { type: "ARRAY", items: { type: "STRING" } },
@@ -219,7 +281,7 @@ const responseSchema = {
   },
   required: [
     "transcript", "turn_intent", "control_response", "nova_reaction", "nova_emotion",
-    "summary", "goals", "interests", "skills", "experience", "barriers", "training_needs",
+    "summary", "goals", "interests", "skills", "experience", "barriers", "barrier_details", "training_needs",
     "evidence", "missing_dimensions", "covered_dimensions", "skipped_dimensions",
     "next_dimension", "interview_complete", "answer_sufficiency", "clarification_needed",
     "clarification_question", "rephrased_question", "next_question", "example_response",
@@ -511,18 +573,49 @@ MAPA OFICIAL:
 ${JSON.stringify(QUESTION_MAP)}
 
 REGLAS DE COBERTURA:
-- covered_dimensions debe incluir todas las dimensiones que la respuesta actual cubra con evidencia explícita.
+- covered_dimensions debe incluir TODAS las dimensiones que la respuesta actual cubra con evidencia explícita, aunque la pregunta actual persiga una sola dimensión.
 - skipped_dimensions debe incluir una dimensión solo si el usuario expresa que no sabe, no quiere responder o pide saltarla.
 - No preguntes nuevamente una dimensión cuyo estado ya sea covered o skipped.
-- Una sola respuesta puede cubrir varias dimensiones.
+- Una sola respuesta puede cubrir varias dimensiones: extrae goal, interests, skills, experience y barriers de forma independiente.
+- Distingue siempre entre lo que el usuario quiere o le interesa y lo que percibe como dificultad, temor, obstáculo o barrera.
 - No inventes habilidades, experiencia, barreras ni intereses.
-- Si el usuario cuenta experiencia informal, reconócela como experiencia sin exagerar.
-- Si menciona una barrera, responde con empatía breve, no con entusiasmo.
+- No conviertas una barrera, miedo o inseguridad en una conclusión sobre la capacidad de la persona.
+- Si el usuario cuenta experiencia informal, reconócela como experiencia sin exagerar y no la conviertas automáticamente en una habilidad avanzada.
+- Si menciona una barrera, responde con reconocimiento específico y empatía breve, no con entusiasmo.
 - next_dimension debe ser una de: goal, interests, skills, experience, barriers, o cadena vacía al cerrar.
 - next_question debe corresponder a next_dimension. Puedes adaptar ligeramente la redacción al contexto, pero debe perseguir la misma dimensión.
 - example_response debe ser un ejemplo corto y coherente con next_dimension.
 - Si Gemini no necesita adaptar la pregunta, usa la pregunta oficial del MAPA.
 - Nunca generes una sexta dimensión.
+
+BARRERAS, SESGOS Y CONTEXTO PERSONAL:
+- barriers sigue siendo una de las 5 dimensiones oficiales. barrier_details es solo metadata estructurada; NO es una sexta dimensión.
+- Clasifica cada barrera explícita en barrier_details usando solo estos tipos: economic, connectivity, education, transport, geographic, time, family_responsibilities, information, confidence, gender_stereotype, discrimination, accessibility, work_experience, digital_skills, documentation, other.
+- Cada barrier_details debe incluir type, description y source_evidence basado en palabras realmente expresadas por el usuario.
+- Si el usuario expresa una dificultad relacionada con género, discriminación, estereotipos sociales o sensación de exclusión, trátala como barrera contextual.
+- Nunca presentes un estereotipo como un hecho objetivo.
+- Nunca concluyas que una carrera, profesión o actividad no es apropiada por género, edad, origen, situación económica, zona geográfica u otra característica personal.
+- Nunca conviertas inseguridad en falta de capacidad.
+- Nunca reduzcas o descartes una aspiración debido a una barrera expresada.
+- Si una respuesta contiene simultáneamente un interés y una barrera, conserva ambos y marca ambas dimensiones como covered.
+- Las barreras sirven para adaptar el camino hacia una oportunidad, no para eliminar la oportunidad.
+- No moralices, no diagnostiques, no hagas terapia y no atribuyas estados psicológicos que el usuario no haya expresado.
+- Ante discriminación, inseguridad, problemas familiares, dificultades económicas, exclusión o miedo, evita "¡Genial!", "¡Perfecto!", "¡Excelente!", "Qué bueno" o "Fantástico".
+- Mantén la reacción específica, breve y respetuosa.
+
+EJEMPLOS DE EXTRACCIÓN MULTIDIMENSIONAL:
+1) "Me gusta mecánica pero me siento insegura porque soy mujer."
+   interests=["mecánica"]; barriers=["inseguridad asociada a estereotipos de género en mecánica"]; barrier_details=[{"type":"gender_stereotype","description":"Percibe estereotipos de género como una dificultad para acercarse a mecánica.","source_evidence":"me siento insegura porque soy mujer"}]; covered_dimensions incluye interests y barriers. NO infieras falta de habilidad.
+2) "Quiero terminar secundaria pero tengo que cuidar a mis hermanos."
+   goals=["terminar secundaria"]; barriers incluye responsabilidades familiares/tiempo; barrier_details usa family_responsibilities; covered_dimensions incluye goal y barriers.
+3) "Quiero aprender programación pero solo tengo celular."
+   interests incluye programación; barriers incluye acceso limitado a equipo tecnológico; barrier_details usa connectivity o digital_skills solo según la evidencia literal. No inventes que no tiene internet.
+4) "No creo ser suficientemente buena para estudiar eso."
+   barriers incluye inseguridad/confianza; barrier_details usa confidence. NO agregues skills negativos.
+5) "Ayudo a mi tío reparando motos."
+   experience incluye experiencia informal reparando motos. NO inventes certificación ni dominio avanzado.
+6) "Quiero estudiar diseño, hago afiches para mi colegio y a veces vendo diseños, pero no tengo computadora."
+   goals/interests, experience y barriers pueden quedar cubiertos en el mismo turno.
 
 MÁXIMO DE PREGUNTAS:
 - El frontend tiene un máximo absoluto de 5 preguntas principales.
@@ -542,7 +635,7 @@ CONTROLES:
 - pedir repetir ejemplo => repeat_example.
 - pedir saltar / "prefiero no responder" => skip_question; marca la dimensión actual como skipped si su ID es una dimensión válida.
 - Las intenciones de control no agregan datos al perfil.
-- Para control, deja goals/interests/skills/experience/barriers/training_needs/evidence vacíos.
+- Para control, deja goals/interests/skills/experience/barriers/barrier_details/training_needs/evidence vacíos.
 - pause no completa la entrevista.
 - answer_sufficiency solo puede ser sufficient, partial o insufficient.
 - Si la respuesta es vaga, clarification_needed=true y haz una aclaración breve sobre la MISMA dimensión.
@@ -551,11 +644,15 @@ CONTROLES:
 - profile_completeness entre 0 y 100.
 
 PERSONALIDAD EN REACCIONES:
-- Objetivo claro: "Perfecto, ya tengo más claro hacia dónde quieres avanzar."
-- Experiencia informal: "Eso también cuenta como experiencia."
-- Barrera: "Entiendo. Voy a tenerlo en cuenta para tu ruta."
-- Evita repetir exactamente estas frases en todos los turnos.
-- Mantén nova_reaction en una sola frase breve.
+- La reacción debe demostrar que comprendiste el CONTENIDO concreto, no solo que detectaste una categoría.
+- Objetivo claro y no sensible: puedes reconocer brevemente hacia dónde quiere avanzar.
+- Experiencia informal: puedes decir "Eso también cuenta como experiencia." cuando sea pertinente.
+- Barrera: menciona brevemente la dificultad concreta con lenguaje respetuoso y sin convertirla en incapacidad.
+- Ejemplo: "Me gusta mecánica pero me da inseguridad porque soy mujer." => "Entiendo. Te interesa la mecánica, pero también sientes inseguridad por los estereotipos que pueden existir alrededor de esa área."
+- Ejemplo: "Quiero estudiar, pero tengo que cuidar a mis hermanos." => "Entiendo. Quieres seguir estudiando, pero tus responsabilidades en casa pueden hacer más difícil organizar el tiempo."
+- Ejemplo: "Me interesa programación pero solo tengo celular." => "Entiendo. Te interesa programación, pero el acceso a una computadora puede ser una dificultad para empezar."
+- Evita repetir exactamente las mismas frases entre turnos.
+- Mantén nova_reaction en UNA sola frase breve; no conviertas la entrevista en un discurso.
 
 PREGUNTA ACTUAL: ${question}
 ID / DIMENSIÓN ACTUAL: ${questionId}
@@ -631,6 +728,7 @@ Devuelve solo el JSON solicitado por el schema.
     result.memory_summary = text(result.memory_summary, 1500);
 
     for (const field of PROFILE_FIELDS) result[field] = stringArray(result[field]);
+    result.barrier_details = sanitizeBarrierDetails(result.barrier_details);
     result.evidence = stringArray(result.evidence, 20);
     result.missing_dimensions = stringArray(result.missing_dimensions, 10);
     result.covered_dimensions = stringArray(result.covered_dimensions, 5).filter((value) => VALID_DIMENSIONS.has(value));
@@ -657,6 +755,7 @@ Devuelve solo el JSON solicitado por el schema.
 
     if (result.answer_sufficiency === "insufficient") {
       for (const field of PROFILE_FIELDS) result[field] = [];
+      result.barrier_details = [];
       result.evidence = [];
       result.covered_dimensions = [];
       result.interview_complete = false;
@@ -666,6 +765,7 @@ Devuelve solo el JSON solicitado por el schema.
 
     if (result.turn_intent !== "answer") {
       for (const field of PROFILE_FIELDS) result[field] = [];
+      result.barrier_details = [];
       result.evidence = [];
       result.summary = "";
       result.memory_summary = "";
@@ -714,6 +814,13 @@ Devuelve solo el JSON solicitado por el schema.
     }
 
     if (result.turn_intent === "answer") {
+      console.log("[NOVA NLP] dimensions_detected", JSON.stringify({
+        dimensions: result.covered_dimensions,
+        barrier_types: result.barrier_details.map((item: BarrierDetail) => item.type),
+        next_dimension: result.next_dimension,
+        interview_complete: result.interview_complete,
+      }));
+
       const projectedStatus = { ...dimensionStatus };
       for (const dimension of result.covered_dimensions) projectedStatus[dimension] = "covered";
       for (const dimension of result.skipped_dimensions) projectedStatus[dimension] = "skipped";
