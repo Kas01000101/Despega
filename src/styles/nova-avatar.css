@@ -838,12 +838,13 @@
 }
 
 #step3View .nova-keyword-chip{
-  flex:0 0 auto!important;
-  max-width:215px!important;
-  overflow:hidden!important;
-  text-overflow:ellipsis!important;
-  white-space:nowrap!important;
-  padding:6px 10px!important;
+  flex:0 1 auto!important;
+  max-width:min(100%,420px)!important;
+  overflow:visible!important;
+  text-overflow:clip!important;
+  white-space:normal!important;
+  overflow-wrap:anywhere!important;
+  padding:7px 12px!important;
   border-radius:999px!important;
   background:rgba(241,38,141,.075)!important;
   color:#be1d6a!important;
