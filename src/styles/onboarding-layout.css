@@ -462,3 +462,183 @@
     overflow: visible !important;
   }
 }
+
+
+/* === LOGIN MASTER — PASOS 2 Y 3 === */
+/*
+ * Login es la plantilla maestra del onboarding en desktop:
+ * 58% visual / 42% contenido, card centrada, navegación global arriba
+ * y cero scroll de página. Los pasos 2 y 3 solo adaptan su contenido interno.
+ */
+@media (min-width: 781px) {
+  #step2View,
+  #step3View {
+    grid-template-columns: minmax(0, 58%) minmax(0, 42%) !important;
+    height: 100dvh !important;
+    min-height: 0 !important;
+    max-height: 100dvh !important;
+    overflow: hidden !important;
+  }
+
+  /* Lado visual: misma presencia y respiración que el hero del Login. */
+  #step2View .onboarding-art-panel,
+  #step3View .onboarding-art-panel {
+    min-width: 0 !important;
+    min-height: 0 !important;
+    height: 100dvh !important;
+    box-sizing: border-box !important;
+    padding: 68px clamp(26px, 3vw, 52px) 22px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    overflow: hidden !important;
+  }
+
+  #step2View .onboarding-art,
+  #step3View .onboarding-art {
+    display: block !important;
+    width: min(84%, 690px) !important;
+    height: auto !important;
+    max-width: 100% !important;
+    max-height: calc(100dvh - 98px) !important;
+    object-fit: contain !important;
+    object-position: center !important;
+  }
+
+  /* Lado de contenido: misma zona útil y centrado que el card del Login. */
+  #step2View .flow-panel,
+  #step3View .flow-panel {
+    min-width: 0 !important;
+    min-height: 0 !important;
+    height: 100dvh !important;
+    box-sizing: border-box !important;
+    padding: 68px clamp(26px, 3vw, 46px) 20px clamp(16px, 2vw, 28px) !important;
+    place-items: center !important;
+    align-content: center !important;
+    overflow: hidden !important;
+  }
+
+  #step2View .flow-card {
+    width: min(100%, 640px) !important;
+    max-height: calc(100dvh - 92px) !important;
+    align-self: center !important;
+  }
+
+  #step3View .flow-card,
+  #step3View .step3-card {
+    width: min(100%, 670px) !important;
+    max-height: calc(100dvh - 92px) !important;
+    align-self: center !important;
+  }
+}
+
+/* Laptop 1366x768: mantener la plantilla; compactar solo el contenido. */
+@media (min-width: 781px) and (max-height: 800px) {
+  #step2View .onboarding-art-panel,
+  #step3View .onboarding-art-panel {
+    padding: 52px 22px 14px !important;
+  }
+
+  #step2View .onboarding-art,
+  #step3View .onboarding-art {
+    width: min(84%, 650px) !important;
+    max-height: calc(100dvh - 66px) !important;
+  }
+
+  #step2View .flow-panel,
+  #step3View .flow-panel {
+    padding: 54px 24px 12px 14px !important;
+  }
+
+  /* PASO 2 — Tu situación */
+  #step2View .flow-card,
+  #step2View .step2-card {
+    width: min(100%, 640px) !important;
+    padding: 14px 20px 14px !important;
+    gap: 6px !important;
+    border-radius: 22px !important;
+  }
+
+  #step2View .stepper {
+    margin-bottom: 2px !important;
+  }
+
+  #step2View .step2-card .flow-heading h2 {
+    font-size: 23px !important;
+    line-height: 1.04 !important;
+  }
+
+  #step2View .step2-card .flow-heading p {
+    margin-top: 2px !important;
+    font-size: 10.8px !important;
+  }
+
+  #step2View .step2-card .select-control {
+    height: 38px !important;
+    min-height: 38px !important;
+  }
+
+  #step2View .step2-card .binary-grid .choice-chip {
+    min-height: 34px !important;
+  }
+
+  #step2View .step2-card .flow-actions {
+    margin-top: 5px !important;
+  }
+
+  #step2View .step2-card .secondary-button,
+  #step2View .step2-card .flow-primary {
+    height: 36px !important;
+    min-height: 36px !important;
+  }
+
+  /* PASO 3 — Conocerte mejor */
+  #step3View .flow-card,
+  #step3View .step3-card {
+    width: min(100%, 670px) !important;
+    padding: 11px 18px 12px !important;
+    gap: 5px !important;
+    border-radius: 22px !important;
+  }
+
+  #step3View .agent-meta-row {
+    min-height: 19px !important;
+  }
+
+  #step3View .nova-centered-stage {
+    min-height: 158px !important;
+  }
+
+  #step3View .nova-orb {
+    width: 122px !important;
+    height: 122px !important;
+  }
+
+  #step3View .nova-orb .agent-orb-core {
+    width: 88px !important;
+    height: 88px !important;
+  }
+
+  #step3View .agent-voice-panel {
+    gap: 5px !important;
+    margin-top: 0 !important;
+  }
+
+  #step3View .agent-example-card {
+    padding: 7px 10px !important;
+  }
+
+  #step3View .click-mic-button {
+    width: 56px !important;
+    height: 56px !important;
+  }
+
+  #step3View .agent-flow-actions {
+    margin-top: 3px !important;
+  }
+
+  #step3View .agent-flow-actions .secondary-button {
+    height: 34px !important;
+    min-height: 34px !important;
+  }
+}
