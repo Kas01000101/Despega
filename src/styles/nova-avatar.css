@@ -20,8 +20,8 @@
   position: relative;
   display: grid;
   place-items: center;
-  width: 152px;
-  height: 152px;
+  width: 168px;
+  height: 168px;
   isolation: isolate;
   transform-origin: center;
   animation: nova2Float 4s ease-in-out infinite;
@@ -47,8 +47,9 @@
     );
   -webkit-mask: radial-gradient(circle, transparent 69%, #000 70% 71.5%, transparent 72.5%);
   mask: radial-gradient(circle, transparent 69%, #000 70% 71.5%, transparent 72.5%);
-  opacity: 0.78;
+  opacity: 0;
   animation: nova2Orbit 10s linear infinite;
+  transition: opacity 180ms ease;
   pointer-events: none;
 }
 
@@ -65,8 +66,8 @@
   background: var(--nova-pink);
   box-shadow: 13px 15px 0 -1px var(--nova-pink);
   transform: rotate(-49deg);
-  opacity: 0.92;
-  animation: nova2AccentBreath 3.4s ease-in-out infinite;
+  opacity: 0;
+  animation: none;
   pointer-events: none;
 }
 
@@ -133,8 +134,9 @@
   inset: 11px;
   border: 1.5px solid rgba(77, 207, 232, 0.34);
   box-shadow: 0 0 18px rgba(77, 207, 232, 0.08);
-  opacity: 0.66;
-  animation: nova2HaloBreath 3.8s ease-in-out infinite;
+  opacity: 0;
+  animation: none;
+  transition: opacity 180ms ease, transform 180ms ease;
 }
 
 .nova-orb .orbit-two {
@@ -152,8 +154,9 @@
     );
   -webkit-mask: radial-gradient(circle, transparent 71%, #000 72% 73.3%, transparent 74.3%);
   mask: radial-gradient(circle, transparent 71%, #000 72% 73.3%, transparent 74.3%);
-  opacity: 0.66;
-  animation: nova2OrbitReverse 8.5s linear infinite;
+  opacity: 0;
+  animation: none;
+  transition: opacity 180ms ease;
 }
 
 /*
@@ -173,10 +176,10 @@
 .nova-orb .orb-eye {
   position: absolute;
   top: 49%;
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 18px;
   border: 0;
-  border-radius: 50%;
+  border-radius: 999px;
   background: #fff;
   box-shadow: none;
   transform: translateY(-50%);
@@ -263,7 +266,8 @@
 
 .nova-orb[data-state="listening"] .orbit-one {
   border-color: rgba(77, 207, 232, 0.72);
-  animation: nova2ListeningHalo 1.7s ease-out infinite;
+  opacity: 0;
+  animation: none;
 }
 
 .nova-orb[data-state="listening"]::after {
@@ -283,18 +287,31 @@
   opacity: 0.86;
 }
 
-/* SPEAKING */
+/* SPEAKING
+ * Cuando Nova habla, la identidad cambia de "ojos" a halo activo.
+ * El aro es un indicador de voz, no un rasgo facial permanente.
+ */
 .nova-orb[data-state="speaking"] .agent-orb-core {
   animation: nova2Speaking 1.55s ease-in-out infinite, nova2GradientFlow 3.2s ease-in-out infinite;
 }
 
-.nova-orb[data-state="speaking"] .orbit-one {
-  animation: nova2SpeakingHalo 1.45s ease-in-out infinite;
+.nova-orb[data-state="speaking"] .orb-face {
+  opacity: 0 !important;
 }
 
 .nova-orb[data-state="speaking"]::before {
-  animation-duration: 5.8s;
-  opacity: 0.95;
+  opacity: 0.96;
+  animation: nova2Orbit 5.8s linear infinite;
+}
+
+.nova-orb[data-state="speaking"] .orbit-one {
+  opacity: 0.92;
+  animation: nova2SpeakingHalo 1.45s ease-in-out infinite;
+}
+
+.nova-orb[data-state="speaking"] .orbit-two {
+  opacity: 0.82;
+  animation: nova2OrbitReverse 5.6s linear infinite;
 }
 
 /* PAUSED */
