@@ -3825,6 +3825,55 @@ main{width:100%;height:100%}
     localStorage.removeItem('despegaConversationHistory');
   }
 
+  function startNewInterviewSession() {
+    if (typeof cleanupNova === 'function') cleanupNova();
+
+    const sessionId = crypto.randomUUID?.() || ('session-' + Date.now());
+    const keys = [
+      'despegaInterviewAnswers',
+      'despegaInterviewUsefulAnswers',
+      'despegaCurrentQuestionId',
+      'despegaCurrentQuestion',
+      'despegaCurrentExample',
+      'despegaAIProfile',
+      'despegaConversationHistory',
+      'despegaRegisterStep1',
+      'despegaRegisterStep2',
+      'despegaRegisterStep3'
+    ];
+    keys.forEach((key) => localStorage.removeItem(key));
+    sessionStorage.removeItem('despegaAgentWelcomed');
+
+    interview.sessionId = sessionId;
+    interview.answersCount = 0;
+    interview.usefulAnswersCount = 0;
+    interview.questionId = 'goal';
+    interview.currentQuestion = INITIAL_QUESTION;
+    interview.currentExample = INITIAL_EXAMPLE;
+    interview.profile = {};
+    interview.conversationHistory = [];
+    interview.pendingResult = null;
+    interview.lastRecordingDurationMs = 0;
+    interview.recordingState = 'idle';
+    interview.stopRequested = false;
+    interview.isProcessing = false;
+    interview.welcomePlayed = false;
+    interview.agentState = 'idle';
+    interview.speechDetected = false;
+    interview.autoListenEnabled = true;
+    interview.noSpeechReminderCount = 0;
+    interview.stopReason = 'manual';
+
+    localStorage.setItem('despegaInterviewSession', sessionId);
+    localStorage.setItem('despegaCurrentQuestionId', interview.questionId);
+    localStorage.setItem('despegaCurrentQuestion', interview.currentQuestion);
+    localStorage.setItem('despegaCurrentExample', interview.currentExample);
+
+    refreshInterviewUI();
+    console.log('[NOVA] nova_session_start', { sessionId });
+    return sessionId;
+  }
+
   function isControlIntent(result) {
     return ['repeat_question','repeat_example','explain_question','pause','skip_question'].includes(String(result?.turn_intent || '').toLowerCase());
   }
