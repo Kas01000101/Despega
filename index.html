@@ -2877,11 +2877,12 @@ main{width:100%;height:100%}
                 <div class="voice-status visually-hidden" id="voiceStatus" aria-live="polite"></div>
               </div>
 
-              <section id="aiConfirmation" class="ai-confirmation agent-confirmation nova-confirmation" hidden aria-live="polite">
-                <div class="ai-confirmation-head"><span class="ai-confirmation-check">✓</span><span id="confirmationTitle">Entendido</span></div>
-                <p id="aiTranscript" class="ai-transcript"></p>
-                <div id="aiInsights" class="ai-insights"></div>
-                <div class="ai-auto-next" id="aiAutoNext">Nova continuará automáticamente…</div>
+              <section id="aiConfirmation" class="ai-confirmation agent-confirmation nova-confirmation nova-keyword-rail" hidden aria-live="polite">
+                <span class="ai-confirmation-check" aria-hidden="true">✓</span>
+                <span id="confirmationTitle" class="nova-detected-label">Detectado:</span>
+                <div id="aiInsights" class="ai-insights nova-keyword-track"></div>
+                <p id="aiTranscript" class="visually-hidden"></p>
+                <div class="visually-hidden" id="aiAutoNext"></div>
               </section>
             </section>
 
@@ -3644,10 +3645,14 @@ main{width:100%;height:100%}
     turnSequence: 0,
     activeTurnId: 0,
     listenRecoveryAttempts: 0,
-    listenWatchdog: null
+    listenWatchdog: null,
+    askedCount: Object.fromEntries(NOVA_CORE_DIMENSIONS.map((dimension) => [dimension, 0]))
   };
 
   localStorage.setItem('despegaInterviewSession', interview.sessionId);
+  if (NOVA_DIMENSION_SET.has(interview.questionId)) {
+    interview.askedCount[interview.questionId] = Math.max(1, Number(interview.askedCount[interview.questionId] || 0));
+  }
 
   const playExampleButton = $('#playExampleButton');
   const step3Finish = $('#step3Finish');
@@ -5149,6 +5154,16 @@ main{width:100%;height:100%}
     if (interview.recordingState !== 'idle') return false;
 
     const lifecycle = Number.isFinite(options.lifecycle) ? options.lifecycle : interview.lifecycleId;
+
+    if (interview.mediaRecorder && interview.mediaRecorder.state !== 'inactive') {
+      interview.mediaRecorder.ondataavailable = null;
+      interview.mediaRecorder.onstop = null;
+      try { interview.mediaRecorder.stop(); } catch {}
+      interview.mediaRecorder = null;
+      interview.chunks = [];
+      interview.recordingState = 'idle';
+    }
+
     if (event) {
       interview.autoListenEnabled = true;
       interview.noSpeechReminderCount = 0;
@@ -5413,21 +5428,42 @@ main{width:100%;height:100%}
   function renderInsights(result) {
     if (!aiInsights) return;
     aiInsights.innerHTML = '';
+
+    const categoryMap = [
+      ['Objetivo', interview.profile?.goals],
+      ['Interés', interview.profile?.interests],
+      ['Habilidad', interview.profile?.skills],
+      ['Experiencia', interview.profile?.experience],
+      ['Barrera', interview.profile?.barriers]
+    ];
+
     const labels = [];
-    const add = (prefix, items) => (Array.isArray(items) ? items : []).slice(0, 2).forEach(item => {
-      const value = insightText(item);
-      if (value) labels.push(`${prefix}: ${value}`);
-    });
-    add('Objetivo', result.goals);
-    add('Interés', result.interests);
-    add('Habilidad', result.skills);
-    add('Barrera', result.barriers);
-    labels.slice(0, 5).forEach(label => {
+    const seen = new Set();
+    for (const [prefix, items] of categoryMap) {
+      const value = (Array.isArray(items) ? items : []).map(insightText).find(Boolean);
+      if (!value) continue;
+
+      const compact = value
+        .replace(/^(quiero|me gustaría|me gustaria|deseo|mi objetivo es)\s+/i, '')
+        .trim();
+      const key = compact.toLowerCase();
+      if (!compact || seen.has(key)) continue;
+      seen.add(key);
+
+      const shortValue = compact.length > 48 ? compact.slice(0, 45).trimEnd() + '…' : compact;
+      labels.push(`${prefix}: ${shortValue}`);
+      if (labels.length >= 5) break;
+    }
+
+    labels.forEach((label, index) => {
       const chip = document.createElement('span');
-      chip.className = 'ai-insight-chip';
+      chip.className = 'ai-insight-chip nova-keyword-chip';
+      chip.style.setProperty('--keyword-index', String(index));
       chip.textContent = label;
       aiInsights.appendChild(chip);
     });
+
+    if (aiConfirmation) aiConfirmation.hidden = labels.length === 0;
   }
 
   function normalizeNovaEmotion(result) {
@@ -5506,14 +5542,36 @@ main{width:100%;height:100%}
     let nextExample = '';
 
     if (needsClarification) {
-      nextDimension = NOVA_DIMENSION_SET.has(interview.questionId)
+      const currentDimension = NOVA_DIMENSION_SET.has(interview.questionId)
         ? interview.questionId
         : getNextPendingDimension();
+      const alreadyAsked = Number(interview.askedCount?.[currentDimension] || 0);
+
+      if (alreadyAsked >= 2) {
+        nextDimension = NOVA_CORE_DIMENSIONS.find((dimension) =>
+          dimension !== currentDimension &&
+          interview.dimensionStatus?.[dimension] === 'pending'
+        ) || '';
+      } else {
+        nextDimension = currentDimension;
+      }
+
+      if (!nextDimension) {
+        interview.pendingResult = { ...result, interview_complete: true, should_finish: true };
+        interview.autoListenEnabled = false;
+        if (micPanel) micPanel.hidden = true;
+        await speakText('¡Listo! Ya tengo lo necesario para construir tu ruta.', false);
+        updateFinishButton();
+        return;
+      }
+
       const mapped = NOVA_QUESTIONS[nextDimension] || NOVA_QUESTIONS.goal;
-      nextQuestion = String(result?.clarification_question || result?.rephrased_question || '').trim() || mapped.question;
+      const sameDimension = nextDimension === currentDimension;
+      nextQuestion = sameDimension
+        ? (String(result?.clarification_question || result?.rephrased_question || '').trim() || mapped.question)
+        : mapped.question;
       nextExample = String(result?.example_response || '').trim() || mapped.example;
-      setAgentEmotion('curious');
-      if (aiAutoNext) aiAutoNext.textContent = 'Nova necesita un poquito más de información…';
+      setAgentEmotion(sameDimension ? 'curious' : normalizeNovaEmotion(result));
     } else {
       nextDimension = getNextPendingDimension(result?.next_dimension);
       if (!nextDimension) {
@@ -5528,10 +5586,10 @@ main{width:100%;height:100%}
       nextQuestion = String(result?.next_question || '').trim() || mapped.question;
       nextExample = String(result?.example_response || '').trim() || mapped.example;
       setAgentEmotion(normalizeNovaEmotion(result));
-      if (aiAutoNext) aiAutoNext.textContent = 'Nova continuará con la siguiente pregunta…';
     }
 
     interview.questionId = nextDimension;
+    interview.askedCount[nextDimension] = Number(interview.askedCount[nextDimension] || 0) + 1;
     interview.currentQuestion = nextQuestion;
     interview.currentExample = nextExample;
     localStorage.setItem('despegaCurrentQuestionId', interview.questionId);
@@ -5594,18 +5652,9 @@ main{width:100%;height:100%}
     setAgentEmotion(emotion);
     setAgentState(needsMore ? 'curious' : 'celebrating');
 
-    if (confirmationTitle) {
-      confirmationTitle.textContent = needsMore
-        ? 'Nova necesita un poquito más de información'
-        : 'Nova entendió tu respuesta';
-    }
-    if (aiAutoNext) {
-      aiAutoNext.textContent = needsMore
-        ? 'Te hará una pregunta breve para aclararlo…'
-        : 'Continuará automáticamente…';
-    }
-
-    aiConfirmation.hidden = false;
+    if (confirmationTitle) confirmationTitle.textContent = 'Detectado:';
+    if (aiAutoNext) aiAutoNext.textContent = '';
+    aiConfirmation.hidden = aiInsights ? aiInsights.children.length === 0 : true;
     micPanel.hidden = true;
     setVoiceStatus('Respuesta procesada.', 'ok');
 
