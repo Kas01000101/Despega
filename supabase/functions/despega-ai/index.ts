@@ -642,6 +642,8 @@ CONTROLES:
 - Para interests, mencionar al menos un área, tema o actividad concreta (por ejemplo "tecnología", "diseño", "negocios") ES suficiente: marca interests como covered y NO pidas aclaración adicional.
 - Si es insufficient, no extraigas datos nuevos.
 - profile_completeness entre 0 y 100.
+- memory_summary debe conservar los hechos importantes ya expresados que sirvan para la ruta, especialmente intereses, experiencia y barreras contextuales. No inventes datos, no diagnostiques y no uses lenguaje estigmatizante.
+- Si una barrera ya fue expresada y cubierta, consérvala en memory_summary y no vuelvas a preguntarla.
 
 PERSONALIDAD EN REACCIONES:
 - La reacción debe demostrar que comprendiste el CONTENIDO concreto, no solo que detectaste una categoría.
@@ -828,12 +830,19 @@ Devuelve solo el JSON solicitado por el schema.
       const currentIsUseful = result.answer_sufficiency === "sufficient";
       const usefulIncludingCurrent = usefulAnswersCount + (currentIsUseful ? 1 : 0);
 
-      if (result.interview_complete && (usefulIncludingCurrent < 3 || resolvedCount < 3)) {
+      const hasGoal = projectedStatus.goal !== "pending";
+      const hasInterests = projectedStatus.interests !== "pending";
+      const hasSkillOrExperience =
+        projectedStatus.skills !== "pending" ||
+        projectedStatus.experience !== "pending";
+      const hasMinimumRouteProfile = hasGoal && hasInterests && hasSkillOrExperience;
+
+      if (result.interview_complete && (usefulIncludingCurrent < 3 || !hasMinimumRouteProfile)) {
         result.interview_complete = false;
         result.should_finish = false;
       }
 
-      if (resolvedCount === CORE_DIMENSIONS.length && usefulIncludingCurrent >= 3) {
+      if (resolvedCount === CORE_DIMENSIONS.length && usefulIncludingCurrent >= 3 && hasMinimumRouteProfile) {
         result.interview_complete = true;
         result.should_finish = true;
       }
