@@ -3139,12 +3139,7 @@ main{width:100%;height:100%}
     if (button) button.setAttribute('aria-expanded', 'false');
   }
 
-  function closeAreas() {
-    const list = $('#areasList');
-    const combo = $('#areasCombo');
-    if (list) list.hidden = true;
-    if (combo) combo.setAttribute('aria-expanded', 'false');
-  }
+  
 
   const flowOrder = ['login', 'step1', 'step2', 'step3', 'analysis'];
   const reduceMotion = window.matchMedia &&
@@ -3205,7 +3200,6 @@ main{width:100%;height:100%}
     currentStep = step;
     document.title = pageTitles[step] || '🚀 Despega+';
     closeLanguage();
-    closeAreas();
 
     animateStepper(views[step], step);
 
@@ -3277,13 +3271,7 @@ main{width:100%;height:100%}
     return selected ? selected.dataset.value : '';
   }
 
-  function selectedMulti(groupName) {
-    return Array.from(
-      document.querySelectorAll(
-        `[data-multi-group="${groupName}"] .choice-chip[aria-pressed="true"]`
-      )
-    ).map((button) => button.dataset.value);
-  }
+  
 
 
   // ---------- INICIO GLOBAL ----------
@@ -3589,8 +3577,6 @@ main{width:100%;height:100%}
   const aiConfirmation = $('#aiConfirmation');
   const aiTranscript = $('#aiTranscript');
   const aiInsights = $('#aiInsights');
-  const reRecordButton = $('#reRecordButton');
-  const acceptAnswerButton = $('#acceptAnswerButton');
   const aiAutoNext = $('#aiAutoNext');
   const interviewProgressBar = $('#interviewProgressBar');
   const offlinePill = $('#offlinePill');
@@ -3820,10 +3806,7 @@ main{width:100%;height:100%}
     saveConversationHistory();
   }
 
-  function clearInterviewMemory() {
-    interview.conversationHistory = [];
-    localStorage.removeItem('despegaConversationHistory');
-  }
+  
 
   function startNewInterviewSession() {
     if (typeof cleanupNova === 'function') cleanupNova();
@@ -5194,13 +5177,11 @@ main{width:100%;height:100%}
   // ---------- CIERRES GLOBALES ----------
   document.addEventListener('click', (event) => {
     if (!event.target.closest('.language-wrap')) closeLanguage();
-    if (!event.target.closest('#areasCombo')) closeAreas();
   });
 
   document.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape') return;
     closeLanguage();
-    closeAreas();
     if (forgotDialog?.open && typeof forgotDialog.close === 'function') {
       forgotDialog.close();
     }
