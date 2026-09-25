@@ -641,11 +641,18 @@ Devuelve solo el JSON solicitado por el schema.
     result.interview_complete = Boolean(result.interview_complete);
     result.should_finish = result.interview_complete;
 
-    if (result.turn_intent === "answer" && questionId === "interests" && result.interests.length > 0) {
-      result.answer_sufficiency = "sufficient";
-      result.clarification_needed = false;
-      if (!result.covered_dimensions.includes("interests")) result.covered_dimensions.push("interests");
-      if (result.next_dimension === "interests") result.next_dimension = "";
+    if (result.turn_intent === "answer" && questionId === "interests") {
+      const transcript = String(result.transcript || "").trim();
+      const normalizedTranscript = transcript.toLowerCase();
+      const nonAnswer = !transcript
+        || /^(no|no sé|no se|ninguno|ninguna|prefiero no responder|paso)$/i.test(normalizedTranscript);
+
+      if (!nonAnswer && (result.interests.length > 0 || transcript.length >= 3)) {
+        result.answer_sufficiency = "sufficient";
+        result.clarification_needed = false;
+        if (!result.covered_dimensions.includes("interests")) result.covered_dimensions.push("interests");
+        if (result.next_dimension === "interests") result.next_dimension = "";
+      }
     }
 
     if (result.answer_sufficiency === "insufficient") {
