@@ -2813,31 +2813,48 @@ main{width:100%;height:100%}
     </section>
 
     <!-- REGISTRO / PASO 3 -->
-    <section id="step3View" class="auth-view form-flow-view" data-view="step3" hidden>
-      <section class="hero-panel onboarding-art-panel" aria-label="Conocerte mejor nos ayuda a orientarte">
-        <img class="onboarding-art" data-shared-characters="true" alt="Dos jóvenes estudiantes de DESPEGA">
-      </section>
-
-      <section class="auth-panel flow-panel" aria-labelledby="step3Title">
-        <form id="step3Form" class="card flow-card step3-card agent-step3-card" novalidate>
-          <ol class="stepper flow-stepper stepper-four" aria-label="Progreso del registro">
+    <section id="step3View" class="auth-view nova-page-view" data-view="step3" hidden>
+      <div class="nova-page-shell">
+        <form id="step3Form" class="nova-conversation-card" novalidate>
+          <ol class="stepper flow-stepper stepper-four nova-stepper" aria-label="Progreso del registro">
             <li class="step completed"><span class="step-circle" aria-hidden="true">✓</span><span class="step-label">Tus datos</span></li>
             <li class="step completed"><span class="step-circle" aria-hidden="true">✓</span><span class="step-label">Tu situación</span></li>
             <li class="step active" aria-current="step"><span class="step-circle">3</span><span class="step-label">Conocerte mejor</span></li>
             <li class="step"><span class="step-circle">4</span><span class="step-label">Resumen</span></li>
           </ol>
 
-          <div class="agent-meta-row">
-            <span class="ai-architecture-badge">Modo conversación</span>
-            <span id="offlinePill" class="offline-pill">Sin conexión · guardaremos tu respuesta</span>
+          <div class="nova-toolbar">
+            <div class="nova-toolbar-left">
+              <span class="ai-architecture-badge nova-mode-badge"><span class="nova-mode-dot" aria-hidden="true"></span>Modo conversación</span>
+              <span id="offlinePill" class="offline-pill">Sin conexión · guardaremos tu respuesta</span>
+            </div>
+
+            <div class="example-audio-card agent-example-card nova-example-compact" id="exampleAudioCard">
+              <button class="play-example" id="playExampleButton" type="button" aria-label="Escuchar ejemplo">
+                <svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6l10 6-10 6z"></path></svg>
+                <svg class="pause-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h3v12H8zM14 6h3v12h-3z"></path></svg>
+              </button>
+              <div class="example-audio-meta">
+                <div class="example-waveform" aria-hidden="true">
+                  <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+                  <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+                </div>
+              </div>
+              <span class="visually-hidden example-audio-title">Escuchar ejemplo</span>
+              <span class="visually-hidden example-time">Voz</span>
+              <span class="visually-hidden example-quote" id="exampleQuote">Por ejemplo, me gustaría terminar mis estudios y luego llevar un curso corto de tecnología.</span>
+            </div>
           </div>
 
-          <div class="agent-stage nova-centered-stage" id="agentStage">
+          <main class="nova-conversation-stage" id="agentStage">
             <div class="agent-orb-zone nova-orb-zone">
               <div id="agentOrb" class="agent-orb nova-orb" data-state="idle" data-emotion="happy" role="status" aria-label="Nova está lista para conversar">
                 <span class="agent-orbit orbit-one" aria-hidden="true"></span>
                 <span class="agent-orbit orbit-two" aria-hidden="true"></span>
                 <div class="agent-orb-core">
+                  <div class="nova-speaking-wave" aria-hidden="true">
+                    <span></span><span></span><span></span><span></span><span></span>
+                  </div>
                   <div class="orb-face" aria-hidden="true">
                     <span class="orb-eye eye-left"></span>
                     <span class="orb-eye eye-right"></span>
@@ -2848,57 +2865,49 @@ main{width:100%;height:100%}
               <div id="agentStateLabel" class="agent-state-label">Lista para conocerte</div>
             </div>
 
+            <section class="nova-context-panel" aria-live="polite" aria-atomic="false">
+              <div class="nova-question-wrap">
+                <span class="nova-question-kicker">Pregunta actual</span>
+                <strong id="currentPrompt" class="nova-current-question">¿Qué te gustaría hacer o aprender en este momento?</strong>
+              </div>
+
+              <div id="novaNotice" class="nova-notice" hidden>
+                <strong id="novaNoticeTitle"></strong>
+                <span id="novaNoticeText"></span>
+              </div>
+
+              <div class="mic-panel agent-mic-panel nova-mic-panel" id="micPanel">
+                <button class="mic-record-button click-mic-button" id="recordAnswerButton" type="button" aria-label="Toca para responder con tu voz" aria-pressed="false">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V8a3 3 0 0 0-6 0v4a3 3 0 0 0 3 3Z"></path><path d="M19 11a7 7 0 0 1-14 0"></path><path d="M12 18v3"></path><path d="M8 21h8"></path></svg>
+                  <span class="mic-stop-square" aria-hidden="true"></span>
+                </button>
+                <div class="record-caption" id="recordCaption">Toca para comenzar cuando estés listo</div>
+                <div class="record-helper" id="recordHelper">Nova detectará automáticamente cuando termines.</div>
+                <div class="voice-status visually-hidden" id="voiceStatus" aria-live="polite"></div>
+              </div>
+
+              <section id="aiConfirmation" class="ai-confirmation agent-confirmation nova-confirmation" hidden aria-live="polite">
+                <div class="ai-confirmation-head"><span class="ai-confirmation-check">✓</span><span id="confirmationTitle">Entendido</span></div>
+                <p id="aiTranscript" class="ai-transcript"></p>
+                <div id="aiInsights" class="ai-insights"></div>
+                <div class="ai-auto-next" id="aiAutoNext">Nova continuará automáticamente…</div>
+              </section>
+            </section>
+
             <div class="visually-hidden" aria-live="polite">
               <h2 id="step3Title">Conocerte mejor con Nova</h2>
               <p id="agentIntro">Nova te hará preguntas breves y adaptará la conversación según tus respuestas.</p>
               <span id="agentLead">Pregunta actual:</span>
-              <strong id="currentPrompt">¿Qué te gustaría hacer o aprender en este momento?</strong>
               <div id="aiQuestionBubble"></div>
               <span id="interviewProgressBar"></span>
             </div>
-          </div>
+          </main>
 
-          <div class="voice-panel agent-voice-panel" id="voicePanel">
-            <div class="example-audio-card agent-example-card" id="exampleAudioCard">
-              <button class="play-example" id="playExampleButton" type="button" aria-label="Escuchar ejemplo">
-                <svg class="play-icon" viewBox="0 0 24 24"><path d="M8 6l10 6-10 6z"></path></svg>
-                <svg class="pause-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h3v12H8zM14 6h3v12h-3z"></path></svg>
-              </button>
-              <div class="example-audio-meta">
-                <div class="example-audio-title">Escuchar ejemplo</div>
-                <div class="example-waveform" aria-hidden="true">
-                  <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
-                  <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
-                </div>
-              </div>
-              <div class="example-time">Voz</div>
-              <div class="example-quote" id="exampleQuote">“Por ejemplo, me gustaría terminar mis estudios y luego llevar un curso corto de tecnología.”</div>
-            </div>
-
-            <div class="mic-panel agent-mic-panel" id="micPanel">
-              <button class="mic-record-button click-mic-button" id="recordAnswerButton" type="button" aria-label="Toca una vez para comenzar a responder con tu voz" aria-pressed="false">
-                <svg viewBox="0 0 24 24"><path d="M12 15a3 3 0 0 0 3-3V8a3 3 0 0 0-6 0v4a3 3 0 0 0 3 3Z"></path><path d="M19 11a7 7 0 0 1-14 0"></path><path d="M12 18v3"></path><path d="M8 21h8"></path></svg>
-                <span class="mic-stop-square" aria-hidden="true"></span>
-              </button>
-              <div class="record-caption" id="recordCaption">Toca una vez para responder</div>
-              <div class="record-helper" id="recordHelper">El micrófono seguirá activo hasta que vuelvas a tocarlo.</div>
-              <div class="voice-status" id="voiceStatus" aria-live="polite">Cuando estés listo, toca el micrófono.</div>
-            </div>
-
-            <section id="aiConfirmation" class="ai-confirmation agent-confirmation" hidden aria-live="polite">
-              <div class="ai-confirmation-head"><span class="ai-confirmation-check">✓</span><span id="confirmationTitle">¡Maravilloso! Entendimos tu respuesta</span></div>
-              <p id="aiTranscript" class="ai-transcript"></p>
-              <div id="aiInsights" class="ai-insights"></div>
-              <div class="ai-auto-next" id="aiAutoNext">Nova continuará automáticamente…</div>
-            </section>
-          </div>
-
-          <div class="flow-actions agent-flow-actions">
+          <footer class="nova-actions">
             <button id="step3Back" class="secondary-button" type="button">Volver</button>
-          </div>
+          </footer>
         </form>
-      </section>
-      </section>
+      </div>
     </section>
 
 
@@ -3606,24 +3615,110 @@ main{width:100%;height:100%}
   const agentLead = $('#agentLead');
   const recordHelper = $('#recordHelper');
   const confirmationTitle = $('#confirmationTitle');
+  const novaNotice = $('#novaNotice');
+  const novaNoticeTitle = $('#novaNoticeTitle');
+  const novaNoticeText = $('#novaNoticeText');
 
-  const AGENT_STATE_LABELS = {
-    idle: 'Lista para conocerte',
-    speaking: 'Nova está hablando',
-    arming: 'Preparando el micrófono…',
-    waiting: 'Puedes empezar a hablar',
-    listening: 'Nova te está escuchando',
-    silence_grace: 'Detectando el final de tu respuesta…',
-    thinking: 'Analizando tu respuesta…',
-    processing: 'Analizando tu respuesta…',
-    paused: 'Conversación pausada',
-    error: 'No pudimos procesarlo',
-    celebrating: 'Perfil actualizado',
-    supportive: 'Estoy aquí para ayudarte',
-    curious: 'Cuéntame un poco más'
-  };
+  const STATE_UI = Object.freeze({
+    idle: {
+      label: 'Lista para conocerte',
+      caption: 'Toca para comenzar cuando estés listo',
+      helper: 'Nova detectará automáticamente cuando termines.'
+    },
+    speaking: {
+      label: 'Nova está hablando',
+      caption: '',
+      helper: ''
+    },
+    arming: {
+      label: 'Preparando el micrófono…',
+      caption: 'Preparando escucha…',
+      helper: 'En un instante puedes empezar a hablar.'
+    },
+    waiting: {
+      label: 'Puedes empezar a hablar',
+      caption: 'Puedes empezar a hablar',
+      helper: 'Nova detectará automáticamente cuando termines.'
+    },
+    listening: {
+      label: 'Te escucho…',
+      caption: 'Te escucho…',
+      helper: 'Habla con calma; no necesitas tocar nada al terminar.'
+    },
+    silence_grace: {
+      label: 'Terminando de escuchar…',
+      caption: 'Terminando de escuchar…',
+      helper: 'Puedes hacer una pausa breve si todavía estás pensando.'
+    },
+    thinking: {
+      label: 'Analizando tu respuesta…',
+      caption: 'Analizando tu respuesta…',
+      helper: 'Nova está entendiendo lo que le contaste.'
+    },
+    processing: {
+      label: 'Analizando tu respuesta…',
+      caption: 'Analizando tu respuesta…',
+      helper: 'Estamos preparando el siguiente paso.'
+    },
+    no_speech_1: {
+      label: 'No escuché una respuesta todavía',
+      caption: 'No escuché una respuesta todavía',
+      helper: 'Tómate tu tiempo. Nova volverá a escucharte.'
+    },
+    no_speech_2: {
+      label: 'No detecté voz',
+      caption: 'No detecté voz. Te doy un momento más.',
+      helper: 'Toca el micrófono cuando quieras continuar.'
+    },
+    paused: {
+      label: 'Conversación pausada',
+      caption: 'Toca para continuar',
+      helper: 'Continúa cuando estés listo.'
+    },
+    error: {
+      label: 'No pudimos procesarlo',
+      caption: 'Algo no salió como esperábamos',
+      helper: 'Puedes intentarlo nuevamente.'
+    },
+    celebrating: {
+      label: 'Perfil actualizado',
+      caption: 'Entendido',
+      helper: ''
+    },
+    supportive: {
+      label: 'Estoy aquí para ayudarte',
+      caption: '',
+      helper: ''
+    },
+    curious: {
+      label: 'Cuéntame un poco más',
+      caption: '',
+      helper: ''
+    }
+  });
+
+  const AGENT_STATE_LABELS = Object.fromEntries(
+    Object.entries(STATE_UI).map(([key, value]) => [key, value.label])
+  );
 
   const NOVA_EMOTIONS = new Set(['happy','curious','supportive','celebrating','calm']);
+
+  function showNovaNotice(title, message, tone = 'supportive') {
+    if (!novaNotice) return;
+    novaNotice.hidden = false;
+    novaNotice.dataset.tone = tone;
+    if (novaNoticeTitle) novaNoticeTitle.textContent = String(title || '');
+    if (novaNoticeText) novaNoticeText.textContent = String(message || '');
+  }
+
+  function clearNovaNotice() {
+    if (!novaNotice) return;
+    novaNotice.hidden = true;
+    novaNotice.removeAttribute('data-tone');
+    if (novaNoticeTitle) novaNoticeTitle.textContent = '';
+    if (novaNoticeText) novaNoticeText.textContent = '';
+  }
+
   function setAgentEmotion(emotion = 'happy') {
     const safe = NOVA_EMOTIONS.has(emotion) ? emotion : 'happy';
     if (agentOrb) agentOrb.dataset.emotion = safe;
@@ -3636,12 +3731,28 @@ main{width:100%;height:100%}
   }
 
   function setAgentState(state = 'idle') {
+    const ui = STATE_UI[state] || STATE_UI.idle;
     interview.agentState = state;
+
     if (agentOrb) {
       agentOrb.dataset.state = state;
-      agentOrb.setAttribute('aria-label', AGENT_STATE_LABELS[state] || 'Nova');
+      agentOrb.setAttribute('aria-label', ui.label || 'Nova');
     }
-    if (agentStateLabel) agentStateLabel.textContent = AGENT_STATE_LABELS[state] || '';
+
+    if (agentStateLabel) agentStateLabel.textContent = ui.label || '';
+    if (recordCaption) recordCaption.textContent = ui.caption || '';
+    if (recordHelper) recordHelper.textContent = ui.helper || '';
+    if (micPanel) micPanel.dataset.state = state;
+
+    const micInteractive = ['idle','arming','waiting','listening','silence_grace','paused','no_speech_2','error'].includes(state);
+    if (recordAnswerButton && !interview.isProcessing) {
+      recordAnswerButton.disabled = !micInteractive;
+    }
+
+    recordAnswerButton?.setAttribute(
+      'aria-pressed',
+      String(['waiting','listening','silence_grace'].includes(state))
+    );
   }
 
   function refreshAgentIdentity() {
@@ -4119,6 +4230,7 @@ main{width:100%;height:100%}
     recordAnswerButton?.setAttribute('aria-pressed', 'false');
     if (recordAnswerButton) recordAnswerButton.disabled = false;
     setAgentState('idle');
+    clearNovaNotice();
 
     console.log('[NOVA] cleanup complete');
   }
@@ -4472,10 +4584,13 @@ main{width:100%;height:100%}
 
     if (interview.noSpeechReminderCount === 1) {
       setAgentEmotion('supportive');
-      setAgentState('supportive');
-      if (recordCaption) recordCaption.textContent = 'No escuché una respuesta todavía';
-      if (recordHelper) recordHelper.textContent = 'Tómate tu tiempo. Nova volverá a escucharte.';
-      setVoiceStatus('No detecté voz. Te doy un momento más.', 'ok');
+      setAgentState('no_speech_1');
+      showNovaNotice(
+        'No escuché una respuesta todavía',
+        'Tómate tu tiempo. Nova volverá a escucharte.',
+        'supportive'
+      );
+      setVoiceStatus('No escuché una respuesta todavía. Tómate tu tiempo.', 'ok');
 
       const speech = await speakText('¿Sigues ahí? Tómate tu tiempo. Cuando quieras, cuéntame tu respuesta.', false);
       if (
@@ -4493,10 +4608,14 @@ main{width:100%;height:100%}
     setAgentEmotion('calm');
     const speech = await speakText('Podemos continuar cuando quieras. Toca el micrófono para seguir.', false);
     if (currentStep === 'step3' && lifecycle === interview.lifecycleId) {
-      setAgentState('paused');
-      if (recordCaption) recordCaption.textContent = 'Conversación pausada';
-      if (recordHelper) recordHelper.textContent = 'Toca el micrófono cuando quieras continuar.';
+      setAgentState('no_speech_2');
+      showNovaNotice(
+        'No detecté voz. Te doy un momento más.',
+        'Toca el micrófono cuando quieras continuar.',
+        'paused'
+      );
       setVoiceStatus('Conversación pausada.', speech.ok ? 'ok' : 'error');
+      setAgentState('paused');
       if (recordAnswerButton) recordAnswerButton.disabled = false;
     }
   }
@@ -4630,6 +4749,7 @@ main{width:100%;height:100%}
   }
 
   async function beginListeningTurn() {
+    clearNovaNotice();
     const lifecycle = interview.lifecycleId;
     if (
       currentStep !== 'step3' ||
