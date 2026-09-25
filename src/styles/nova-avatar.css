@@ -367,8 +367,8 @@
 }
 
 #step3View .nova-orb .orb-eye {
-  width: 11px;
-  height: 11px;
+  width: 12px;
+  height: 18px;
 }
 
 @keyframes nova2Float {
@@ -452,8 +452,8 @@
   }
 
   #step3View .nova-orb .orb-eye {
-    width: 10px;
-    height: 10px;
+    width: 11px;
+    height: 16px;
   }
 }
 
@@ -485,8 +485,8 @@
   }
 
   #step3View .nova-orb .orb-eye {
-    width: 8px;
-    height: 8px;
+    width: 9px;
+    height: 14px;
   }
 
   .nova-name {
@@ -543,4 +543,153 @@
   border-color: rgba(77, 207, 232, 0.38);
   opacity: 0.52;
   animation: nova2HaloBreath 3.6s ease-in-out infinite;
+}
+
+
+/* === NOVA STEP 3 — SPEAKING WAVE V3 === */
+#step3View .nova-orb {
+  width: 220px;
+  height: 220px;
+}
+
+#step3View .nova-orb .agent-orb-core {
+  width: 158px;
+  height: 158px;
+}
+
+#step3View .nova-speaking-wave {
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  pointer-events: none;
+}
+
+#step3View .nova-speaking-wave span {
+  display: block;
+  width: 7px;
+  height: 42px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.96);
+  box-shadow: 0 0 14px rgba(255,255,255,.18);
+  transform-origin: center;
+  animation: novaSpeakingBar 760ms ease-in-out infinite alternate;
+}
+
+#step3View .nova-speaking-wave span:nth-child(1) { height: 30px; animation-delay: -520ms; }
+#step3View .nova-speaking-wave span:nth-child(2) { height: 50px; animation-delay: -320ms; }
+#step3View .nova-speaking-wave span:nth-child(3) { height: 62px; animation-delay: -180ms; }
+#step3View .nova-speaking-wave span:nth-child(4) { height: 46px; animation-delay: -420ms; }
+#step3View .nova-speaking-wave span:nth-child(5) { height: 32px; animation-delay: -250ms; }
+
+#step3View .nova-orb[data-state="speaking"] .nova-speaking-wave {
+  display: flex;
+}
+
+#step3View .nova-orb[data-state="speaking"] .orb-face {
+  opacity: 0 !important;
+  visibility: hidden !important;
+}
+
+#step3View .nova-orb:not([data-state="speaking"]) .nova-speaking-wave {
+  display: none !important;
+}
+
+#step3View .nova-orb[data-state="waiting"] .orb-face,
+#step3View .nova-orb[data-state="listening"] .orb-face,
+#step3View .nova-orb[data-state="silence_grace"] .orb-face,
+#step3View .nova-orb[data-state="arming"] .orb-face,
+#step3View .nova-orb[data-state="idle"] .orb-face,
+#step3View .nova-orb[data-state="thinking"] .orb-face,
+#step3View .nova-orb[data-state="processing"] .orb-face,
+#step3View .nova-orb[data-state="paused"] .orb-face,
+#step3View .nova-orb[data-state="no_speech_1"] .orb-face,
+#step3View .nova-orb[data-state="no_speech_2"] .orb-face {
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+#step3View .nova-orb[data-state="listening"] .orbit-one {
+  opacity: .84 !important;
+  border-color: rgba(77,207,232,.74) !important;
+  animation: nova2ListeningHalo 1.65s ease-out infinite !important;
+}
+
+#step3View .nova-orb[data-state="waiting"] .orbit-one {
+  opacity: .58 !important;
+}
+
+#step3View .nova-orb[data-state="silence_grace"] .orbit-one {
+  opacity: .40 !important;
+}
+
+#step3View .nova-orb[data-state="no_speech_1"] .agent-orb-core,
+#step3View .nova-orb[data-state="no_speech_2"] .agent-orb-core {
+  animation: nova2Breathe 4s ease-in-out infinite;
+}
+
+#step3View .nova-orb[data-state="no_speech_1"] .orbit-one {
+  opacity: .42 !important;
+  border-color: rgba(77,207,232,.38) !important;
+}
+
+#step3View .nova-orb[data-state="no_speech_2"] .orbit-one {
+  opacity: .32 !important;
+  border-color: rgba(118,103,248,.32) !important;
+}
+
+@keyframes novaSpeakingBar {
+  from { transform: scaleY(.58); opacity: .72; }
+  to { transform: scaleY(1.06); opacity: 1; }
+}
+
+@media (min-width: 781px) and (max-height: 800px) {
+  #step3View .nova-orb {
+    width: 188px;
+    height: 188px;
+  }
+
+  #step3View .nova-orb .agent-orb-core {
+    width: 138px;
+    height: 138px;
+  }
+
+  #step3View .nova-speaking-wave span {
+    width: 6px;
+  }
+}
+
+@media (max-width: 780px) {
+  #step3View .nova-orb {
+    width: 152px;
+    height: 152px;
+  }
+
+  #step3View .nova-orb .agent-orb-core {
+    width: 108px;
+    height: 108px;
+  }
+
+  #step3View .nova-orb .orb-eye {
+    width: 9px !important;
+    height: 14px !important;
+  }
+
+  #step3View .nova-speaking-wave {
+    gap: 5px;
+  }
+
+  #step3View .nova-speaking-wave span {
+    width: 5px;
+    height: 32px;
+  }
+
+  #step3View .nova-speaking-wave span:nth-child(1) { height: 22px; }
+  #step3View .nova-speaking-wave span:nth-child(2) { height: 36px; }
+  #step3View .nova-speaking-wave span:nth-child(3) { height: 44px; }
+  #step3View .nova-speaking-wave span:nth-child(4) { height: 34px; }
+  #step3View .nova-speaking-wave span:nth-child(5) { height: 24px; }
 }
