@@ -85,6 +85,7 @@ Los ojos deben quedar centrados y ligeramente por encima del centro vertical.
 
 Paleta base recomendada:
 
+- rosa energético: `#F06BB9`;
 - violeta: `#B95CFF`;
 - azul-violeta: `#7667F8`;
 - cyan: `#4DCFE8`;
@@ -93,10 +94,10 @@ Paleta base recomendada:
 Gradiente sugerido:
 
 ```text
-violeta → azul → cyan
+rosa suave → violeta → azul-violeta → cyan
 ```
 
-El rosa puede utilizarse únicamente como reflejo secundario muy sutil. No debe dominar el avatar.
+El rosa puede tener presencia visible como luz o acento tecnológico, especialmente en la zona superior del orb y en trazos externos. Nunca debe convertirse en mejillas, rubor ni otro rasgo facial.
 
 ---
 
@@ -133,12 +134,15 @@ borde blanco translúcido: 1–2 px
 opacidad: 20–35%
 ```
 
-El halo exterior debe ser discreto.
+El halo exterior debe ser limpio y tecnológico.
 
 Máximo recomendado:
 
 - 1 halo principal;
-- 1 arco secundario tenue.
+- 1 arco secundario tenue;
+- 1 grupo muy pequeño de trazos/accent strokes externos.
+
+Los trazos pueden usar rosa, violeta o cyan y moverse lentamente. No deben parecer orejas, cejas, corazones, signos de emoción ni adornos kawaii.
 
 El halo comunica **actividad digital**, no emoción.
 
@@ -288,9 +292,12 @@ No utilizar:
 
 ### Onboarding
 
-- desktop: **140–160 px**;
-- tablet: **120–140 px**;
-- mobile: **96–120 px**.
+- desktop amplio: **170–180 px** de contenedor;
+- laptop compacta: **150–160 px**;
+- tablet: **132–148 px**;
+- mobile: **116–128 px**.
+
+El núcleo del orb debe conservar aproximadamente un **70–73%** del diámetro total del contenedor.
 
 ### Chatbot
 
@@ -429,6 +436,8 @@ Antes de aprobar cualquier implementación de Nova 2.0 debe verificarse:
 - [ ] No existen mejillas o rubor.
 - [ ] No existen adornos kawaii.
 - [ ] Los estados se comunican con halo, luz o movimiento.
+- [ ] Nova tiene movimiento continuo y sutil cuando está activa.
+- [ ] En onboarding, Nova es perceptiblemente más grande que la versión anterior.
 - [ ] El launcher mantiene proporciones correctas.
 - [ ] El avatar no se deforma en responsive.
 - [ ] El panel se percibe juvenil y profesional.
