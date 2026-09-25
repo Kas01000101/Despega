@@ -14,7 +14,7 @@ Nova no debe parecer una mascota infantil, juguete, emoji, personaje kawaii ni a
 
 ## 2. Regla visual principal
 
-> **El rostro de Nova está compuesto exclusivamente por dos círculos blancos. Nova no tiene boca, pupilas, cejas ni otros elementos faciales. Su estado se comunica mediante luz, halo y movimiento, nunca mediante expresiones faciales.**
+> **El rostro de Nova está compuesto exclusivamente por dos ojos blancos ovalados y sólidos. Nova no tiene boca, pupilas, cejas ni otros elementos faciales. En reposo se muestran los dos ojos; cuando Nova está hablando, la señal principal pasa a ser el aro/halo activo.**
 
 Esta regla es obligatoria en todas las variantes del avatar.
 
@@ -43,7 +43,7 @@ El objetivo es que se perciba como un **núcleo de IA**.
 
 ### 4.1 Ojos
 
-Nova tendrá exactamente **dos círculos blancos sólidos**.
+Nova tendrá exactamente **dos ojos blancos ovalados y sólidos**.
 
 No deben incluir:
 
@@ -54,7 +54,7 @@ No deben incluir:
 - bordes negros;
 - pestañas;
 - cejas;
-- formas ovaladas kawaii.
+- geometría kawaii, brillos o deformaciones expresivas.
 
 ### 4.2 Boca
 
@@ -73,7 +73,8 @@ No debe existir:
 
 Tomando el diámetro del orb como 100%:
 
-- diámetro de cada ojo: **8–10%**;
+- ancho de cada ojo: **8–10%** del núcleo;
+- alto de cada ojo: **12–15%** del núcleo;
 - separación visual entre ojos: **14–18%**;
 - posición vertical: **47–51%** del orb.
 
@@ -207,6 +208,13 @@ color: #667085;
 
 ---
 
+### Regla de transición ojos ↔ aro
+
+- **Nova en reposo / lista / escuchando:** se reconocen los dos ojos blancos ovalados.
+- **Nova hablando:** aparece el aro/halo de actividad como señal principal de voz.
+- El aro no debe permanecer encendido con la misma intensidad cuando Nova está inactiva.
+- Nunca se añaden palabras, boca, pupilas o expresiones faciales para representar estados.
+
 ## 10. Estados visuales
 
 Los ojos mantienen siempre la misma geometría.
@@ -220,9 +228,9 @@ Los ojos mantienen siempre la misma geometría.
 
 ### LISTENING
 
-- halo cyan pulsando lentamente;
-- ojos sin cambios;
-- actividad exterior sutil.
+- ojos blancos visibles;
+- actividad del núcleo muy sutil;
+- sin convertir el halo exterior en el estado dominante.
 
 ### PROCESSING
 
@@ -232,9 +240,10 @@ Los ojos mantienen siempre la misma geometría.
 
 ### SPEAKING
 
-- expansión muy leve del halo;
-- pequeña vibración o pulso;
-- sin boca animada.
+- el aro/halo exterior se vuelve el indicador principal de voz;
+- los ojos dejan de ser el elemento dominante durante la locución;
+- expansión muy leve del halo y pulso controlado;
+- sin boca animada ni texto dentro del orb.
 
 ### PAUSED
 
