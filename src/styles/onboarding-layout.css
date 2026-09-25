@@ -182,8 +182,8 @@
 
   #registerView .input-control,
   #registerView .geo-select-control {
-    height: 36px !important;
-    min-height: 36px !important;
+    height: 38px !important;
+    min-height: 38px !important;
     border-radius: 11px !important;
   }
 
