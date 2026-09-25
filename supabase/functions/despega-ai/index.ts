@@ -25,6 +25,30 @@ const VALID_INTENTS = new Set([
 const VALID_SUFFICIENCY = new Set(["sufficient", "partial", "insufficient"]);
 const VALID_FOLLOW_UP = new Set(["deepen", "clarify", "connect", "switch_dimension", "close"]);
 const PROFILE_FIELDS = ["goals", "interests", "skills", "experience", "barriers", "training_needs"];
+const CORE_DIMENSIONS = ["goal", "interests", "skills", "experience", "barriers"] as const;
+const VALID_DIMENSIONS = new Set<string>(CORE_DIMENSIONS);
+const QUESTION_MAP: Record<string, { question: string; example: string }> = {
+  goal: {
+    question: "¿Qué te gustaría hacer o aprender en este momento?",
+    example: "Por ejemplo: terminar tus estudios, aprender una habilidad, conseguir tu primer trabajo o estudiar una carrera técnica.",
+  },
+  interests: {
+    question: "¿Qué áreas o temas te interesan más?",
+    example: "Por ejemplo: tecnología, diseño, negocios, salud, mecánica, educación o atención al cliente.",
+  },
+  skills: {
+    question: "¿Qué cosas sientes que haces bien?",
+    example: "Por ejemplo: organizar, explicar ideas, vender, reparar cosas, usar una computadora o ayudar a otras personas.",
+  },
+  experience: {
+    question: "¿Hay algo que ya hayas hecho, aunque no haya sido un trabajo formal?",
+    example: "Por ejemplo: ayudar en un negocio familiar, vender productos, cuidar personas o hacer proyectos del colegio.",
+  },
+  barriers: {
+    question: "¿Hay algo que hoy te dificulte avanzar hacia lo que quieres?",
+    example: "Por ejemplo: falta de tiempo, dinero, internet, transporte, responsabilidades en casa o no saber por dónde empezar.",
+  },
+};
 const rateBuckets = new Map<string, { count: number; resetAt: number }>();
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
@@ -177,6 +201,10 @@ const responseSchema = {
     training_needs: { type: "ARRAY", items: { type: "STRING" } },
     evidence: { type: "ARRAY", items: { type: "STRING" } },
     missing_dimensions: { type: "ARRAY", items: { type: "STRING" } },
+    covered_dimensions: { type: "ARRAY", items: { type: "STRING" } },
+    skipped_dimensions: { type: "ARRAY", items: { type: "STRING" } },
+    next_dimension: { type: "STRING" },
+    interview_complete: { type: "BOOLEAN" },
     answer_sufficiency: { type: "STRING" },
     clarification_needed: { type: "BOOLEAN" },
     clarification_question: { type: "STRING" },
@@ -192,7 +220,8 @@ const responseSchema = {
   required: [
     "transcript", "turn_intent", "control_response", "nova_reaction", "nova_emotion",
     "summary", "goals", "interests", "skills", "experience", "barriers", "training_needs",
-    "evidence", "missing_dimensions", "answer_sufficiency", "clarification_needed",
+    "evidence", "missing_dimensions", "covered_dimensions", "skipped_dimensions",
+    "next_dimension", "interview_complete", "answer_sufficiency", "clarification_needed",
     "clarification_question", "rephrased_question", "next_question", "example_response",
     "follow_up_strategy", "profile_completeness", "should_finish", "final_message", "memory_summary",
   ],
@@ -439,88 +468,94 @@ Deno.serve(async (req: Request) => {
     } catch {}
 
     const onboardingData = parseJsonObject(form.get("onboarding_data"));
+    const rawDimensionStatus = parseJsonObject(form.get("dimension_status")) || {};
+    const dimensionStatus: Record<string, string> = {};
+    for (const dimension of CORE_DIMENSIONS) {
+      const value = String(rawDimensionStatus[dimension] || "pending").toLowerCase();
+      dimensionStatus[dimension] = value === "covered" || value === "skipped" ? value : "pending";
+    }
     const bytes = new Uint8Array(await audio.arrayBuffer());
     const audioBase64 = toBase64(bytes);
 
     const prompt = `
-Eres NOVA, la agente conversacional de DESPEGA+, una plataforma de orientación educativa y laboral para jóvenes.
+Eres NOVA, la guía conversacional de DESPEGA+, una plataforma de orientación educativa y laboral para jóvenes.
 
-PERSONALIDAD:
-- Cálida, optimista, curiosa y breve.
-- Natural y conversacional; no suenes como formulario.
-- Nunca infantilices, juzgues ni uses entusiasmo exagerado ante dificultades.
-- Haz UNA sola pregunta por turno.
+IDENTIDAD Y TONO:
+- Cercana, juvenil, optimista, clara y respetuosa.
+- Energética sin exagerar; nunca infantil ni condescendiente.
+- Usa español simple y frases cortas.
+- Reconoce brevemente lo que el joven acaba de decir cuando aporte valor.
+- No repitas muletillas ni elogios vacíos.
+- Haz UNA sola pregunta a la vez.
 
-OBJETIVO:
-Construir progresivamente un perfil con evidencia sobre:
-1) objetivos,
-2) intereses,
-3) habilidades o experiencia,
-4) barreras o necesidades.
+OBJETIVO DE LA ENTREVISTA:
+Construir un perfil breve usando SOLO estas 5 dimensiones:
+1. goal: objetivo actual.
+2. interests: áreas o temas de interés.
+3. skills: habilidades.
+4. experience: experiencia formal o informal.
+5. barriers: barreras actuales.
 
-MEMORIA Y CONTINUIDAD:
-- Lee primero la respuesta actual y el historial reciente.
-- Identifica qué información nueva acaba de aportar el usuario.
-- No preguntes algo que ya esté explícito en la respuesta o en la memoria.
-- No formules una pregunta solo porque exista una dimensión pendiente.
-- Cuando el usuario mencione algo útil, profundiza naturalmente antes de cambiar de tema.
-- Cambia de dimensión solo cuando el hilo actual ya esté suficientemente claro o cuando falte una dimensión crítica.
-- La siguiente pregunta debe poder reconocerse como una reacción a lo que el usuario acaba de decir.
-- Evita preguntas genéricas que podrías haber hecho sin escuchar la respuesta.
-- Si puedes conectar lo nuevo con algo dicho antes, hazlo de forma breve y natural.
+MAPA OFICIAL:
+${JSON.stringify(QUESTION_MAP)}
 
-ESTRATEGIA DE SEGUIMIENTO:
-follow_up_strategy debe ser EXACTAMENTE uno de:
-- deepen: profundizar en algo relevante recién mencionado.
-- clarify: aclarar una respuesta ambigua o insuficiente.
-- connect: conectar la respuesta actual con información previa.
-- switch_dimension: cambiar a otra dimensión realmente pendiente.
-- close: cerrar porque ya hay suficiente información.
+REGLAS DE COBERTURA:
+- covered_dimensions debe incluir todas las dimensiones que la respuesta actual cubra con evidencia explícita.
+- skipped_dimensions debe incluir una dimensión solo si el usuario expresa que no sabe, no quiere responder o pide saltarla.
+- No preguntes nuevamente una dimensión cuyo estado ya sea covered o skipped.
+- Una sola respuesta puede cubrir varias dimensiones.
+- No inventes habilidades, experiencia, barreras ni intereses.
+- Si el usuario cuenta experiencia informal, reconócela como experiencia sin exagerar.
+- Si menciona una barrera, responde con empatía breve, no con entusiasmo.
+- next_dimension debe ser una de: goal, interests, skills, experience, barriers, o cadena vacía al cerrar.
+- next_question debe corresponder a next_dimension. Puedes adaptar ligeramente la redacción al contexto, pero debe perseguir la misma dimensión.
+- example_response debe ser un ejemplo corto y coherente con next_dimension.
+- Si Gemini no necesita adaptar la pregunta, usa la pregunta oficial del MAPA.
+- Nunca generes una sexta dimensión.
 
-EJEMPLOS:
-Usuario: "Me gustaría aprender programación."
-MAL: "¿Has programado antes?"
-BIEN: "¿Qué te gustaría llegar a crear o hacer con programación?"
-
-Usuario: "Quiero hacer aplicaciones."
-BIEN: "¿Hay algún problema o necesidad que te gustaría resolver con una aplicación?"
-
-Usuario: "Quiero ayudar a estudiantes a encontrar oportunidades."
-BIEN: "¿Qué tipo de oportunidades te gustaría que pudieran encontrar primero?"
-
-Usuario: "Me gustan los videojuegos."
-MAL: "¿Cuáles son tus intereses?"
-BIEN: "¿Te atrae más jugarlos o también te gustaría aprender cómo se crean?"
+MÁXIMO DE PREGUNTAS:
+- El frontend tiene un máximo absoluto de 5 preguntas principales.
+- Ayuda a terminar antes si varias dimensiones ya quedaron cubiertas.
+- interview_complete puede ser true cuando ya exista información suficiente para construir una ruta y se hayan resuelto al menos 3 dimensiones; prioriza cubrir objetivo + interés + (habilidad o experiencia) y, si fue mencionada o preguntada, barrera.
+- should_finish debe tener el mismo valor que interview_complete.
+- Si todas las dimensiones están cubiertas o skipped, interview_complete=true.
+- No fuerces una pregunta redundante solo para llegar a 5.
 
 INTENCIONES:
-Clasifica turn_intent EXACTAMENTE como uno de:
+turn_intent debe ser EXACTAMENTE uno de:
 answer, repeat_question, repeat_example, explain_question, pause, skip_question.
 
-REGLAS CRÍTICAS:
-- Si el usuario dice "repítela", "otra vez" o "qué me preguntaste", usa repeat_question.
-- Si dice "no entendí", usa explain_question y reformula la MISMA pregunta.
-- Si pide repetir el ejemplo, usa repeat_example.
-- Si pide saltar, usa skip_question y formula next_question sobre OTRA dimensión pendiente.
-- Las intenciones de control NO agregan información al perfil.
-- Para una intención de control, deja goals/interests/skills/experience/barriers/training_needs/evidence vacíos.
-- No infieras atributos sensibles ni condiciones que el usuario no haya declarado.
-- Si la respuesta es vaga, usa clarification_needed=true, follow_up_strategy=clarify y formula una aclaración breve.
+CONTROLES:
+- "repítela", "otra vez", "qué me preguntaste" => repeat_question.
+- "no entendí" => explain_question y reformula la misma dimensión.
+- pedir repetir ejemplo => repeat_example.
+- pedir saltar / "prefiero no responder" => skip_question; marca la dimensión actual como skipped si su ID es una dimensión válida.
+- Las intenciones de control no agregan datos al perfil.
+- Para control, deja goals/interests/skills/experience/barriers/training_needs/evidence vacíos.
+- pause no completa la entrevista.
 - answer_sufficiency solo puede ser sufficient, partial o insufficient.
-- Si es insufficient, no extraigas datos nuevos del perfil.
-- Solo usa should_finish=true cuando, contando esta respuesta, existan al menos 3 respuestas útiles y haya evidencia de objetivo + interés + (habilidad o experiencia) + barrera/necesidad.
-- Si faltan datos y el hilo actual ya está claro, usa switch_dimension hacia la dimensión faltante más importante.
-- profile_completeness debe estar entre 0 y 100.
+- Si la respuesta es vaga, clarification_needed=true y haz una aclaración breve sobre la MISMA dimensión.
+- Si es insufficient, no extraigas datos nuevos.
+- profile_completeness entre 0 y 100.
+
+PERSONALIDAD EN REACCIONES:
+- Objetivo claro: "Perfecto, ya tengo más claro hacia dónde quieres avanzar."
+- Experiencia informal: "Eso también cuenta como experiencia."
+- Barrera: "Entiendo. Voy a tenerlo en cuenta para tu ruta."
+- Evita repetir exactamente estas frases en todos los turnos.
+- Mantén nova_reaction en una sola frase breve.
 
 PREGUNTA ACTUAL: ${question}
-ID: ${questionId}
+ID / DIMENSIÓN ACTUAL: ${questionId}
 RESPUESTAS ÚTILES PREVIAS: ${usefulAnswersCount}
 TURNOS PREVIOS: ${turnsCount}
 EJEMPLO ACTUAL: ${currentExample}
+ESTADO DE DIMENSIONES: ${JSON.stringify(dimensionStatus)}
 PERFIL: ${JSON.stringify(profile)}
 HISTORIAL RECIENTE: ${JSON.stringify(history)}
 
 Devuelve solo el JSON solicitado por el schema.
-`;
+`
 
     const gemini = await callGeminiResilient({
       apiKey: geminiKey,
@@ -586,10 +621,19 @@ Devuelve solo el JSON solicitado por el schema.
     for (const field of PROFILE_FIELDS) result[field] = stringArray(result[field]);
     result.evidence = stringArray(result.evidence, 20);
     result.missing_dimensions = stringArray(result.missing_dimensions, 10);
+    result.covered_dimensions = stringArray(result.covered_dimensions, 5).filter((value) => VALID_DIMENSIONS.has(value));
+    result.skipped_dimensions = stringArray(result.skipped_dimensions, 5).filter((value) => VALID_DIMENSIONS.has(value));
+    result.next_dimension = VALID_DIMENSIONS.has(String(result.next_dimension || ""))
+      ? String(result.next_dimension)
+      : "";
+    result.interview_complete = Boolean(result.interview_complete);
+    result.should_finish = result.interview_complete;
 
     if (result.answer_sufficiency === "insufficient") {
       for (const field of PROFILE_FIELDS) result[field] = [];
       result.evidence = [];
+      result.covered_dimensions = [];
+      result.interview_complete = false;
       result.should_finish = false;
       result.follow_up_strategy = "clarify";
     }
@@ -599,6 +643,9 @@ Devuelve solo el JSON solicitado por el schema.
       result.evidence = [];
       result.summary = "";
       result.memory_summary = "";
+      result.covered_dimensions = [];
+      result.skipped_dimensions = [];
+      result.interview_complete = false;
       result.should_finish = false;
       result.clarification_needed = false;
 
@@ -621,18 +668,49 @@ Devuelve solo el JSON solicitado por el schema.
         result.follow_up_strategy = "close";
       } else if (result.turn_intent === "skip_question") {
         result.control_response ||= "Está bien, podemos pasar a otra pregunta.";
-        result.next_question ||= "Cuéntame sobre otro aspecto que consideres importante para decidir tu siguiente paso.";
-        result.follow_up_strategy = "switch_dimension";
+        if (VALID_DIMENSIONS.has(questionId)) result.skipped_dimensions = [questionId];
+        const nextDimension = CORE_DIMENSIONS.find((dimension) =>
+          dimension !== questionId &&
+          dimensionStatus[dimension] === "pending"
+        ) || "";
+        result.next_dimension = nextDimension;
+        if (nextDimension) {
+          result.next_question = QUESTION_MAP[nextDimension].question;
+          result.example_response = QUESTION_MAP[nextDimension].example;
+        } else {
+          result.next_question = "";
+          result.example_response = "";
+          result.interview_complete = true;
+          result.should_finish = true;
+        }
+        result.follow_up_strategy = nextDimension ? "switch_dimension" : "close";
       }
     }
 
-    if (result.turn_intent === "answer" && result.should_finish) {
+    if (result.turn_intent === "answer") {
+      const projectedStatus = { ...dimensionStatus };
+      for (const dimension of result.covered_dimensions) projectedStatus[dimension] = "covered";
+      for (const dimension of result.skipped_dimensions) projectedStatus[dimension] = "skipped";
+      const resolvedCount = CORE_DIMENSIONS.filter((dimension) => projectedStatus[dimension] !== "pending").length;
       const currentIsUseful = result.answer_sufficiency === "sufficient";
       const usefulIncludingCurrent = usefulAnswersCount + (currentIsUseful ? 1 : 0);
-      if (usefulIncludingCurrent < 3) {
+
+      if (result.interview_complete && (usefulIncludingCurrent < 3 || resolvedCount < 3)) {
+        result.interview_complete = false;
         result.should_finish = false;
-      } else {
+      }
+
+      if (resolvedCount === CORE_DIMENSIONS.length && usefulIncludingCurrent >= 3) {
+        result.interview_complete = true;
+        result.should_finish = true;
+      }
+
+      if (result.interview_complete) {
         result.follow_up_strategy = "close";
+        result.next_dimension = "";
+        result.next_question = "";
+        result.example_response = "";
+        result.final_message ||= "¡Listo! Ya tengo lo necesario para construir tu ruta.";
       }
     }
 
