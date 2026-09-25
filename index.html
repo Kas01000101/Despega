@@ -2462,6 +2462,7 @@ main{width:100%;height:100%}
 }
 
 </style>
+  <link rel="stylesheet" href="./src/styles/nova-avatar.css">
 </head>
 <body>
 <!--
@@ -2826,21 +2827,14 @@ main{width:100%;height:100%}
               <div id="agentOrb" class="agent-orb nova-orb" data-state="idle" data-emotion="happy" role="status" aria-label="Nova está lista para conversar">
                 <span class="agent-orbit orbit-one" aria-hidden="true"></span>
                 <span class="agent-orbit orbit-two" aria-hidden="true"></span>
-                <span class="agent-orbit orbit-three" aria-hidden="true"></span>
-                <span class="agent-spark spark-one" aria-hidden="true"></span>
-                <span class="agent-spark spark-two" aria-hidden="true"></span>
                 <div class="agent-orb-core">
                   <div class="orb-face" aria-hidden="true">
                     <span class="orb-eye eye-left"></span>
                     <span class="orb-eye eye-right"></span>
-                    <span class="orb-mouth"></span>
-                  </div>
-                  <div class="orb-equalizer" aria-hidden="true">
-                    <i></i><i></i><i></i><i></i><i></i>
                   </div>
                 </div>
               </div>
-              <div class="nova-name">Nova <span aria-hidden="true">✦</span></div>
+              <div class="nova-name">Nova</div>
               <div id="agentStateLabel" class="agent-state-label">Lista para conocerte</div>
             </div>
 
@@ -3578,10 +3572,13 @@ main{width:100%;height:100%}
     idle: 'Lista para conocerte',
     speaking: 'Nova está hablando',
     listening: 'Nova te está escuchando',
-    thinking: 'Nova está pensando…',
-    celebrating: '¡Genial!',
-    supportive: 'Estoy contigo',
-    curious: 'Quiero conocerte un poquito más'
+    thinking: 'Analizando tu respuesta…',
+    processing: 'Analizando tu respuesta…',
+    paused: 'Conversación pausada',
+    error: 'No pudimos procesarlo',
+    celebrating: 'Perfil actualizado',
+    supportive: 'Estoy aquí para ayudarte',
+    curious: 'Cuéntame un poco más'
   };
 
   const NOVA_EMOTIONS = new Set(['happy','curious','supportive','celebrating','calm']);
