@@ -2838,6 +2838,11 @@ main{width:100%;height:100%}
           </div>
 
           <main class="nova-conversation-stage" id="agentStage">
+            <div class="nova-question-inline">
+              <span class="nova-question-kicker">PREGUNTA ACTUAL</span>
+              <strong id="currentPrompt" class="nova-current-question">¿Qué te gustaría hacer o aprender en este momento?</strong>
+            </div>
+
             <div class="agent-orb-zone nova-orb-zone">
               <div id="agentOrb" class="agent-orb nova-orb" data-state="idle" data-emotion="happy" role="status" aria-label="Nova está lista para conversar">
                 <span class="agent-orbit orbit-one" aria-hidden="true"></span>
@@ -2857,10 +2862,6 @@ main{width:100%;height:100%}
             </div>
 
             <section class="nova-context-panel" aria-live="polite" aria-atomic="false">
-              <div class="visually-hidden" aria-live="polite">
-                <strong id="currentPrompt">¿Qué te gustaría hacer o aprender en este momento?</strong>
-              </div>
-
               <div id="novaNotice" class="nova-notice" hidden>
                 <strong id="novaNoticeTitle"></strong>
                 <span id="novaNoticeText"></span>
@@ -3687,39 +3688,39 @@ main{width:100%;height:100%}
       helper: 'Nova detectará automáticamente cuando termines.'
     },
     speaking: {
-      label: 'Nova está hablando',
+      label: 'Preguntando…',
       caption: '',
       helper: ''
     },
     arming: {
-      label: 'Preparando el micrófono…',
-      caption: 'Preparando escucha…',
-      helper: 'En un instante puedes empezar a hablar.'
+      label: 'Escuchando…',
+      caption: '',
+      helper: ''
     },
     waiting: {
-      label: 'Puedes empezar a hablar',
-      caption: 'Puedes empezar a hablar',
-      helper: 'Nova detectará automáticamente cuando termines.'
+      label: 'Escuchando…',
+      caption: '',
+      helper: ''
     },
     listening: {
-      label: 'Te escucho…',
-      caption: 'Te escucho…',
-      helper: 'Habla con calma; no necesitas tocar nada al terminar.'
+      label: 'Escuchando…',
+      caption: '',
+      helper: ''
     },
     silence_grace: {
-      label: 'Terminando de escuchar…',
-      caption: 'Terminando de escuchar…',
-      helper: 'Puedes hacer una pausa breve si todavía estás pensando.'
+      label: 'Escuchando…',
+      caption: '',
+      helper: ''
     },
     thinking: {
-      label: 'Analizando tu respuesta…',
-      caption: 'Analizando tu respuesta…',
-      helper: 'Nova está entendiendo lo que le contaste.'
+      label: 'Analizando…',
+      caption: '',
+      helper: ''
     },
     processing: {
-      label: 'Analizando tu respuesta…',
-      caption: 'Respuesta capturada',
-      helper: 'Nova está preparando la siguiente pregunta…'
+      label: 'Analizando…',
+      caption: '',
+      helper: ''
     },
     ready_to_finish: {
       label: 'Tu perfil está listo',
@@ -4587,7 +4588,7 @@ main{width:100%;height:100%}
   
       if (currentStep === 'step3' && lifecycle === interview.lifecycleId) {
         if (interview.mediaRecorder?.state === 'recording') setAgentState('listening');
-        else if (interview.isProcessing) setAgentState('thinking');
+        else if (interview.isProcessing) setAgentState('processing');
         else setAgentState('idle');
       }
     }
@@ -4991,10 +4992,10 @@ main{width:100%;height:100%}
             calibrationMs: Math.round(now - calibrationStartedAt)
           });
 
-          setAgentState('waiting');
-          if (recordCaption) recordCaption.textContent = 'Puedes empezar a hablar';
-          if (recordHelper) recordHelper.textContent = 'Nova detectará automáticamente cuando termines.';
-          setVoiceStatus('Te escucho…', 'processing');
+          setAgentState('listening');
+          if (recordCaption) recordCaption.textContent = 'Escuchando…';
+          if (recordHelper) recordHelper.textContent = '';
+          setVoiceStatus('Escuchando…', 'processing');
 
           console.log('[NOVA] listen_armed', {
             noiseFloor: Number(base.toFixed(4)),
@@ -5049,6 +5050,7 @@ main{width:100%;height:100%}
               delayFromListeningMs: listeningStartedAt ? Math.round(now - listeningStartedAt) : null
             });
             console.log('[NOVA] speech_started');
+            novaTurnLog('speech_start', { questionId: interview.questionId });
           }
         } else {
           voiceAboveSince = 0;
@@ -5094,6 +5096,7 @@ main{width:100%;height:100%}
               speechDurationMs: speechStartedAt ? Math.round(now - speechStartedAt) : null
             });
             console.log('[NOVA] silence_detected', { silenceMs: Math.round(silenceMs) });
+            novaTurnLog('speech_end', { silenceMs: Math.round(silenceMs) });
             stopVoiceActivityDetection();
             stopRealRecording('silence');
             return;
@@ -5210,10 +5213,10 @@ main{width:100%;height:100%}
       recordAnswerButton?.setAttribute('aria-pressed', 'true');
       recordAnswerButton?.setAttribute('aria-label', 'Detener respuesta manualmente');
       if (recordAnswerButton) recordAnswerButton.disabled = false;
-      if (recordCaption) recordCaption.textContent = 'Preparando escucha…';
-      if (recordHelper) recordHelper.textContent = 'Nova detectará tu voz y el final de tu respuesta.';
-      setAgentState('arming');
-      setVoiceStatus('Preparando escucha…', 'processing');
+      if (recordCaption) recordCaption.textContent = 'Escuchando…';
+      if (recordHelper) recordHelper.textContent = '';
+      setAgentState('listening');
+      setVoiceStatus('Escuchando…', 'processing');
       console.log('[NOVA] recorder started', interview.mediaRecorder.mimeType);
       novaTurnLog('recording_start', { mimeType: interview.mediaRecorder.mimeType });
 
@@ -5276,9 +5279,10 @@ main{width:100%;height:100%}
       if (recordAnswerButton) recordAnswerButton.disabled = false;
     }
 
-    if (recordCaption) recordCaption.textContent = 'Procesando tu respuesta…';
-    if (recordHelper) recordHelper.textContent = 'Nova está entendiendo lo que le contaste.';
-    setAgentState('thinking');
+    if (recordCaption) recordCaption.textContent = '';
+    if (recordHelper) recordHelper.textContent = '';
+    setAgentState('silence_grace');
+    novaTurnLog('recorder_stop', { reason });
     console.log('[NOVA] recorder stopped', {
       durationMs: interview.lastRecordingDurationMs,
       reason: interview.stopReason
@@ -5344,7 +5348,8 @@ main{width:100%;height:100%}
 
     setInterviewBusy(true);
     setAgentState('processing');
-    setVoiceStatus('Respuesta capturada. Nova está preparando la siguiente pregunta…', 'processing');
+    novaTurnLog('processing_start', { bytes: blob.size, durationMs });
+    setVoiceStatus('Analizando…', 'processing');
 
     const queueItem = {
       id: crypto.randomUUID?.() || `voice-${Date.now()}`,
@@ -5380,10 +5385,16 @@ main{width:100%;height:100%}
     try {
       const result = await callDespegaAI(blob, queueItem);
       if (currentStep !== 'step3') return;
+      setInterviewBusy(false);
+      novaTurnLog('processing_end', { questionId: queueItem.questionId });
       await receiveAIResult(result);
     } catch (error) {
       if (error?.name === 'AbortError') {
         console.log('[NOVA] request aborted');
+        setInterviewBusy(false);
+        setAgentState('error');
+        showNovaNotice('No pude procesar esa respuesta', 'Toca el micrófono para intentarlo otra vez.', 'error');
+        resetForRecording();
         return;
       }
 
@@ -5728,8 +5739,8 @@ main{width:100%;height:100%}
       }
 
       setInterviewBusy(true);
-      setAgentState('thinking');
-      setVoiceStatus('Recuperamos tu conexión. Procesando la respuesta guardada…', 'processing');
+      setAgentState('processing');
+      setVoiceStatus('Analizando…', 'processing');
 
       try {
         const result = await callDespegaAI(row.blob, row);
