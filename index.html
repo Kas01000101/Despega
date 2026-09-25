@@ -4038,11 +4038,7 @@ main{width:100%;height:100%}
     form.append('profile', JSON.stringify(requestMeta.profile || { ...loadPriorProfile(), ...interview.profile }));
     form.append('conversation_history', JSON.stringify((requestMeta.conversationHistory || interview.conversationHistory || []).slice(-10)));
     form.append('current_example', requestMeta.currentExample || interview.currentExample || '');
-    form.append('duration_ms', String(
-      Number.isFinite(requestMeta.durationMs)
-        ? requestMeta.durationMs
-        : (Number.isFinite(interview.lastRecordingDurationMs) ? interview.lastRecordingDurationMs : 0)
-    ));
+    form.append('duration_ms', String(Number.isFinite(requestMeta.durationMs) ? requestMeta.durationMs : (interview.lastRecordingDurationMs || 0)));
     form.append('onboarding_data', JSON.stringify(loadPriorProfile()));
 
     console.log('[NOVA] sending to Supabase', {
@@ -4301,6 +4297,7 @@ main{width:100%;height:100%}
       profile: { ...loadPriorProfile(), ...interview.profile },
       conversationHistory: (interview.conversationHistory || []).slice(-10),
       currentExample: interview.currentExample || '',
+      durationMs,
       blob,
       mimeType: blob.type,
       createdAt: Date.now(),
