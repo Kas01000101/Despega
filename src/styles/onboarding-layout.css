@@ -1,0 +1,451 @@
+/*
+ * DESPEGA+ — Layout compartido del onboarding
+ * Corrige Tus datos / Tu situación / Conocerte mejor.
+ *
+ * Objetivos:
+ * - reservar una zona segura para Inicio + Idioma
+ * - evitar que las cards se monten sobre las acciones globales
+ * - impedir que los CTA queden recortados por el viewport
+ * - mantener un único comportamiento responsive para los 3 pasos
+ */
+
+@media (min-width: 781px) {
+  #registerView,
+  #step2View,
+  #step3View {
+    width: 100%;
+    height: 100dvh;
+    min-height: 100dvh;
+    grid-template-columns: minmax(0, 42%) minmax(0, 58%) !important;
+    align-items: stretch;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    overscroll-behavior-y: contain;
+    scrollbar-gutter: stable;
+  }
+
+  /* Zona global Inicio / Idioma */
+  .language-wrap {
+    top: 18px !important;
+    right: 32px !important;
+  }
+
+  /* La columna derecha empieza siempre debajo de las acciones globales. */
+  #registerView .register-panel,
+  #step2View .flow-panel,
+  #step3View .flow-panel {
+    min-width: 0;
+    min-height: 0;
+    place-items: start center !important;
+    align-content: start;
+    padding-top: 78px !important;
+    padding-right: clamp(24px, 3vw, 46px) !important;
+    padding-bottom: 28px !important;
+    padding-left: clamp(18px, 2vw, 30px) !important;
+  }
+
+  /* Ninguna card del onboarding depende de una altura forzada. */
+  #registerView .register-card,
+  #step2View .flow-card,
+  #step3View .flow-card {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    align-self: start;
+  }
+
+  #registerView .register-card {
+    width: min(100%, 590px) !important;
+  }
+
+  #step2View .flow-card,
+  #step3View .flow-card {
+    width: min(100%, 720px) !important;
+  }
+
+  /* Columna visual izquierda: contenida, nunca obliga a crecer al formulario. */
+  #registerView .hero-register,
+  #step2View .onboarding-art-panel,
+  #step3View .onboarding-art-panel {
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  #step2View .onboarding-art-panel,
+  #step3View .onboarding-art-panel {
+    padding: 74px 24px 28px !important;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #step2View .onboarding-art,
+  #step3View .onboarding-art {
+    width: min(100%, 600px) !important;
+    height: auto !important;
+    max-height: calc(100dvh - 118px) !important;
+    object-fit: contain !important;
+    object-position: center !important;
+  }
+
+  /* El botón final permanece dentro del flujo normal. */
+  #registerView .register-continue,
+  #step2View .flow-actions,
+  #step3View .flow-actions {
+    position: static !important;
+    inset: auto !important;
+  }
+
+  #step2View .step2-card .flow-actions,
+  #step3View .agent-flow-actions {
+    margin-top: 4px !important;
+  }
+}
+
+/* Laptop real: 1366x768 suele dejar ~650–710 px útiles por el navegador. */
+@media (min-width: 781px) and (max-height: 719px) {
+  #registerView,
+  #step2View,
+  #step3View {
+    grid-template-columns: minmax(0, 40%) minmax(0, 60%) !important;
+  }
+
+  .language-wrap {
+    top: 12px !important;
+    right: 26px !important;
+  }
+
+  #registerView .register-panel,
+  #step2View .flow-panel,
+  #step3View .flow-panel {
+    padding-top: 62px !important;
+    padding-right: 24px !important;
+    padding-bottom: 16px !important;
+    padding-left: 14px !important;
+  }
+
+  /* PASO 1 — Tus datos */
+  #registerView .register-card {
+    width: min(100%, 570px) !important;
+    padding: 15px 22px 16px !important;
+    gap: 7px !important;
+    border-radius: 22px !important;
+  }
+
+  #registerView .stepper {
+    margin: 0 4px 2px !important;
+  }
+
+  #registerView .stepper::before {
+    top: 12px !important;
+  }
+
+  #registerView .step {
+    gap: 3px !important;
+    font-size: 9.4px !important;
+  }
+
+  #registerView .step-circle {
+    width: 27px !important;
+    height: 27px !important;
+    font-size: 10px !important;
+    border-width: 3px !important;
+  }
+
+  #registerView .register-heading h2 {
+    font-size: 25px !important;
+    line-height: 1.06 !important;
+  }
+
+  #registerView .register-heading p {
+    margin-top: 2px !important;
+    font-size: 11.2px !important;
+  }
+
+  #registerView .two-columns {
+    gap: 9px !important;
+  }
+
+  #registerView .field {
+    gap: 3px !important;
+  }
+
+  #registerView .field-label {
+    font-size: 9.8px !important;
+  }
+
+  #registerView .input-control,
+  #registerView .geo-select-control {
+    height: 40px !important;
+    min-height: 40px !important;
+    border-radius: 11px !important;
+  }
+
+  #registerView .input-control {
+    padding: 0 10px !important;
+    gap: 8px !important;
+  }
+
+  #registerView .input-control input,
+  #registerView .geo-select-control select {
+    font-size: 10.8px !important;
+  }
+
+  #registerView .input-control > svg,
+  #registerView .geo-select-control > svg {
+    width: 17px !important;
+    height: 17px !important;
+  }
+
+  #registerView .geo-grid {
+    gap: 8px !important;
+  }
+
+  #registerView .field-help {
+    font-size: 8.6px !important;
+    line-height: 1.25 !important;
+  }
+
+  #registerView .register-continue {
+    height: 42px !important;
+    margin-top: 1px !important;
+    font-size: 12px !important;
+  }
+
+  /* PASO 2 — Tu situación */
+  #step2View .flow-card {
+    width: min(100%, 570px) !important;
+  }
+
+  #step2View .step2-card {
+    padding: 15px 22px 16px !important;
+    gap: 7px !important;
+    border-radius: 22px !important;
+  }
+
+  #step2View .step2-card .flow-heading h2 {
+    font-size: 24px !important;
+    line-height: 1.06 !important;
+  }
+
+  #step2View .step2-card .flow-heading p {
+    margin-top: 2px !important;
+    font-size: 10.8px !important;
+  }
+
+  #step2View .step2-card .field-label,
+  #step2View .step2-card .binary-group legend {
+    margin-bottom: 4px !important;
+    font-size: 10.6px !important;
+  }
+
+  #step2View .step2-card .select-control {
+    height: 38px !important;
+    min-height: 38px !important;
+  }
+
+  #step2View .step2-card .binary-grid {
+    gap: 8px !important;
+  }
+
+  #step2View .step2-card .binary-grid .choice-chip {
+    min-height: 35px !important;
+    padding: 5px 10px !important;
+    font-size: 10.2px !important;
+  }
+
+  #step2View .step2-card .inline-note {
+    font-size: 9.7px !important;
+  }
+
+  #step2View .step2-card .secondary-button,
+  #step2View .step2-card .flow-primary {
+    height: 36px !important;
+    font-size: 10.5px !important;
+  }
+
+  /* PASO 3 — Conocerte mejor */
+  #step3View .flow-card,
+  #step3View .step3-card {
+    width: min(100%, 700px) !important;
+    padding: 11px 18px 12px !important;
+    gap: 6px !important;
+    border-radius: 22px !important;
+  }
+
+  #step3View .agent-meta-row {
+    min-height: 20px !important;
+  }
+
+  #step3View .nova-centered-stage {
+    min-height: 166px !important;
+  }
+
+  #step3View .nova-orb {
+    width: 126px !important;
+    height: 126px !important;
+  }
+
+  #step3View .nova-orb .agent-orb-core {
+    width: 90px !important;
+    height: 90px !important;
+  }
+
+  #step3View .nova-name {
+    font-size: 16px !important;
+  }
+
+  #step3View .agent-state-label {
+    font-size: 10.5px !important;
+  }
+
+  #step3View .agent-voice-panel {
+    gap: 6px !important;
+    margin-top: 0 !important;
+  }
+
+  #step3View .agent-example-card {
+    padding: 7px 10px !important;
+    border-radius: 14px !important;
+  }
+
+  #step3View .agent-example-card .example-quote {
+    padding: 6px 9px !important;
+    font-size: 8.8px !important;
+  }
+
+  #step3View .click-mic-button {
+    width: 58px !important;
+    height: 58px !important;
+  }
+
+  #step3View .record-caption {
+    font-size: 9.8px !important;
+  }
+
+  #step3View .record-helper,
+  #step3View .voice-status {
+    font-size: 8.4px !important;
+  }
+
+  #step3View .agent-flow-actions .secondary-button {
+    height: 34px !important;
+    min-height: 34px !important;
+    min-width: 96px !important;
+    font-size: 9.8px !important;
+  }
+
+  /* Arte de pasos 2 y 3: no compite con el formulario. */
+  #step2View .onboarding-art-panel,
+  #step3View .onboarding-art-panel {
+    padding: 58px 20px 18px !important;
+  }
+
+  #step2View .onboarding-art,
+  #step3View .onboarding-art {
+    width: min(91%, 555px) !important;
+    max-height: calc(100dvh - 88px) !important;
+  }
+
+  /* Paso 1: reduce solo la escala, sin rediseñar la ilustración. */
+  #registerView .hero-copy {
+    margin-top: 10px !important;
+    width: min(560px, 88%) !important;
+  }
+
+  #registerView .hero-logo {
+    width: 205px !important;
+  }
+
+  #registerView .register-hero-copy h1 {
+    font-size: 36px !important;
+  }
+
+  #registerView .hero-copy p {
+    margin-top: 10px !important;
+    font-size: 12.4px !important;
+  }
+
+  #registerView .register-characters {
+    width: min(560px, 84%) !important;
+    max-height: 40% !important;
+  }
+}
+
+/* Alturas extremadamente reducidas: priorizar acceso completo al contenido. */
+@media (min-width: 781px) and (max-height: 639px) {
+  #registerView .register-panel,
+  #step2View .flow-panel,
+  #step3View .flow-panel {
+    padding-top: 56px !important;
+    padding-bottom: 12px !important;
+  }
+
+  #registerView .register-card {
+    padding: 12px 19px 13px !important;
+    gap: 5px !important;
+  }
+
+  #registerView .input-control,
+  #registerView .geo-select-control {
+    height: 36px !important;
+    min-height: 36px !important;
+  }
+
+  #registerView .register-continue {
+    height: 38px !important;
+  }
+
+  #step2View .step2-card {
+    padding: 12px 18px 12px !important;
+    gap: 5px !important;
+  }
+
+  #step3View .flow-card,
+  #step3View .step3-card {
+    padding: 9px 15px 10px !important;
+    gap: 4px !important;
+  }
+
+  #step3View .nova-centered-stage {
+    min-height: 148px !important;
+  }
+
+  #step3View .nova-orb {
+    width: 114px !important;
+    height: 114px !important;
+  }
+
+  #step3View .nova-orb .agent-orb-core {
+    width: 82px !important;
+    height: 82px !important;
+  }
+}
+
+/* Mobile: un solo scroll de página; nunca una card con scroll propio. */
+@media (max-width: 780px) {
+  #registerView,
+  #step2View,
+  #step3View {
+    height: auto !important;
+    min-height: 100dvh !important;
+    overflow: visible !important;
+  }
+
+  #registerView .register-panel,
+  #step2View .flow-panel,
+  #step3View .flow-panel {
+    padding-top: 72px !important;
+    padding-bottom: 34px !important;
+  }
+
+  #registerView .register-card,
+  #step2View .flow-card,
+  #step3View .flow-card {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+}
