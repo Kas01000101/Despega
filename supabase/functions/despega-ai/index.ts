@@ -2,7 +2,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.95.0";
 
 // DESPEGA+ — Supabase Edge Function for Nova
 // Required secret: GEMINI_API_KEY
-// Optional: GEMINI_MODEL, ALLOWED_ORIGINS (comma-separated exact origins)
+// Optional: GEMINI_MODEL, GEMINI_FALLBACK_MODEL, ALLOWED_ORIGINS (comma-separated exact origins)
 
 const MAX_AUDIO_BYTES = 8 * 1024 * 1024;
 const MAX_QUESTION_CHARS = 1000;
@@ -12,6 +12,7 @@ const MAX_HISTORY_TURNS = 10;
 const MAX_PROFILE_ITEMS = 30;
 const RATE_LIMIT_PER_MINUTE = 20;
 const MODEL = Deno.env.get("GEMINI_MODEL") || "gemini-3.8-flash";
+const FALLBACK_MODEL = Deno.env.get("GEMINI_FALLBACK_MODEL") || "gemini-3.5-flash-lite";
 
 const VALID_INTENTS = new Set([
   "answer",
@@ -269,6 +270,92 @@ async function persistTurn(args: {
   return true;
 }
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function geminiRequestBody(prompt: string, audioType: string, audioBase64: string) {
+  return {
+    contents: [{
+      role: "user",
+      parts: [
+        { text: prompt },
+        {
+          inlineData: {
+            mimeType: audioType || "audio/webm",
+            data: audioBase64,
+          },
+        },
+      ],
+    }],
+    generationConfig: {
+      responseMimeType: "application/json",
+      responseSchema,
+    },
+  };
+}
+
+async function callGeminiResilient(args: {
+  apiKey: string;
+  prompt: string;
+  audioType: string;
+  audioBase64: string;
+}) {
+  const attempts = [
+    { model: MODEL, delayMs: 0, label: "primary" },
+    { model: MODEL, delayMs: 650, label: "primary_retry" },
+    { model: FALLBACK_MODEL, delayMs: 900, label: "fallback" },
+  ];
+
+  let lastResponse: Response | null = null;
+  let lastPayload: any = null;
+
+  for (const attempt of attempts) {
+    if (attempt.delayMs) await sleep(attempt.delayMs);
+
+    const endpoint =
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(attempt.model)}:generateContent?key=${encodeURIComponent(args.apiKey)}`;
+
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(geminiRequestBody(args.prompt, args.audioType, args.audioBase64)),
+    });
+
+    const payload = await response.json();
+    lastResponse = response;
+    lastPayload = payload;
+
+    if (response.ok) {
+      if (attempt.label !== "primary") {
+        console.log("Gemini recovery", JSON.stringify({
+          path: attempt.label,
+          model: attempt.model,
+          status: response.status,
+        }));
+      }
+      return { response, payload, model: attempt.model, path: attempt.label };
+    }
+
+    const retryable = [429, 500, 502, 503, 504].includes(response.status);
+    console.error("Gemini attempt failed", JSON.stringify({
+      path: attempt.label,
+      model: attempt.model,
+      status: response.status,
+      code: payload?.error?.status || payload?.error?.code || null,
+    }));
+
+    if (!retryable) break;
+  }
+
+  return {
+    response: lastResponse,
+    payload: lastPayload,
+    model: null,
+    path: "failed",
+  };
+}
+
 Deno.serve(async (req: Request) => {
   const origin = req.headers.get("Origin");
 
@@ -435,41 +522,25 @@ HISTORIAL RECIENTE: ${JSON.stringify(history)}
 Devuelve solo el JSON solicitado por el schema.
 `;
 
-    const endpoint =
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODEL)}:generateContent?key=${encodeURIComponent(geminiKey)}`;
-
-    const geminiResponse = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{
-          role: "user",
-          parts: [
-            { text: prompt },
-            {
-              inlineData: {
-                mimeType: audio.type || "audio/webm",
-                data: audioBase64,
-              },
-            },
-          ],
-        }],
-        generationConfig: {
-          temperature: 0.35,
-          responseMimeType: "application/json",
-          responseSchema,
-        },
-      }),
+    const gemini = await callGeminiResilient({
+      apiKey: geminiKey,
+      prompt,
+      audioType: audio.type || "audio/webm",
+      audioBase64,
     });
+    const geminiResponse = gemini.response;
+    const payload = gemini.payload;
 
-    const payload = await geminiResponse.json();
-
-    if (!geminiResponse.ok) {
-      console.error("Gemini error", JSON.stringify(payload));
+    if (!geminiResponse?.ok) {
+      console.error("Gemini exhausted retries", JSON.stringify({
+        status: geminiResponse?.status || null,
+        code: payload?.error?.status || payload?.error?.code || null,
+      }));
       return json({
-        error: "GEMINI_ERROR",
-        message: "No pudimos analizar la respuesta en este momento.",
-      }, 502, origin);
+        error: "GEMINI_TEMPORARILY_UNAVAILABLE",
+        message: "Gemini está temporalmente ocupado. Intenta responder otra vez en unos segundos.",
+        retryable: true,
+      }, 503, origin);
     }
 
     const output =
