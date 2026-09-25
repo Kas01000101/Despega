@@ -3061,15 +3061,29 @@ main{width:100%;height:100%}
     kokoroTtsUrl: '',
     maxRecordingSeconds: 30,
     minRecordingMs: 800,
-    vadCalibrationMs: 450,
-    vadSpeechStartMs: 180,
+    minAudioBytes: 256,
+    vadCalibrationMs: 700,
+    vadSpeechStartMs: 120,
     vadSilenceMs: 1500,
     vadNoSpeechMs: 8000,
-    vadPostTtsDelayMs: 300,
+    vadPostTtsDelayMs: 650,
+    vadThresholdMin: 0.009,
+    vadThresholdMax: 0.065,
+    vadNoiseMultiplier: 1.8,
+    vadNoiseOffset: 0.003,
+    vadContinueRatio: 0.72,
+    vadDebugIntervalMs: 350,
     maxInterviewQuestions: 7,
     targetInterviewQuestions: 4,
     minInterviewQuestions: 3
   });
+
+  const NOVA_DEBUG = true;
+
+  function novaVadDebug(event, payload = {}) {
+    if (!NOVA_DEBUG) return;
+    console.log(`[NOVA VAD] ${event}`, payload);
+  }
 
   const views = {
     login: $('#loginView'),
@@ -4626,33 +4640,70 @@ main{width:100%;height:100%}
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
 
     if (!AudioContextClass) {
+      novaVadDebug('fallback_manual', { reason: 'audio_context_unavailable' });
       setAgentState('listening');
       setVoiceStatus('Te escucho. Toca el micrófono cuando termines.', 'processing');
       return;
     }
 
-    const context = new AudioContextClass();
-    const source = context.createMediaStreamSource(stream);
-    const analyser = context.createAnalyser();
-    analyser.fftSize = 512;
-    analyser.smoothingTimeConstant = 0.2;
-    source.connect(analyser);
+    let context;
+    let source;
+    let analyser;
+
+    try {
+      context = new AudioContextClass();
+      source = context.createMediaStreamSource(stream);
+      analyser = context.createAnalyser();
+      analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = 0.2;
+      source.connect(analyser);
+    } catch (error) {
+      console.warn('[NOVA VAD] setup_failed', error);
+      novaVadDebug('fallback_manual', { reason: 'vad_setup_failed' });
+      setAgentState('listening');
+      if (recordCaption) recordCaption.textContent = 'Te escucho…';
+      if (recordHelper) recordHelper.textContent = 'La detección automática no está disponible. Toca el micrófono cuando termines.';
+      setVoiceStatus('Te escucho. Toca el micrófono cuando termines.', 'processing');
+      return;
+    }
 
     interview.audioContext = context;
     interview.analyser = analyser;
     interview.speechDetected = false;
 
-    try { context.resume?.().catch(() => {}); } catch {}
+    novaVadDebug('audio_context', {
+      state: context.state,
+      sampleRate: context.sampleRate
+    });
+
+    if (context.state === 'suspended') {
+      try {
+        context.resume?.().then(() => {
+          novaVadDebug('audio_context_resumed', { state: context.state });
+        }).catch((error) => {
+          console.warn('[NOVA VAD] resume_failed', error);
+        });
+      } catch (error) {
+        console.warn('[NOVA VAD] resume_failed', error);
+      }
+    }
 
     const samples = new Uint8Array(analyser.fftSize);
     const calibrationSamples = [];
-    const startedAt = performance.now();
+    const calibrationStartedAt = performance.now();
+    let listeningStartedAt = null;
+    let speechStartedAt = null;
     let calibrated = false;
     let threshold = 0.03;
     let voiceAboveSince = 0;
     let lastVoiceAt = 0;
     let silenceUiShown = false;
     let timeoutHandled = false;
+    let lastDebugAt = 0;
+
+    novaVadDebug('calibration_started', {
+      calibrationMs: DESPEGA_AI.vadCalibrationMs
+    });
 
     setAgentState('arming');
     if (recordCaption) recordCaption.textContent = 'Preparando escucha…';
@@ -4682,42 +4733,101 @@ main{width:100%;height:100%}
 
       if (!calibrated) {
         calibrationSamples.push(rms);
-        if (now - startedAt >= DESPEGA_AI.vadCalibrationMs) {
+
+        if (now - calibrationStartedAt >= DESPEGA_AI.vadCalibrationMs) {
           const ordered = calibrationSamples.slice().sort((a, b) => a - b);
           const base = ordered[Math.floor(Math.max(0, ordered.length - 1) * 0.35)] || 0.008;
-          threshold = Math.min(0.09, Math.max(0.02, base * 2.6 + 0.006));
+          threshold = Math.min(
+            DESPEGA_AI.vadThresholdMax,
+            Math.max(
+              DESPEGA_AI.vadThresholdMin,
+              base * DESPEGA_AI.vadNoiseMultiplier + DESPEGA_AI.vadNoiseOffset
+            )
+          );
+
           calibrated = true;
+          listeningStartedAt = performance.now();
+
+          novaVadDebug('calibration_complete', {
+            noiseFloor: Number(base.toFixed(5)),
+            threshold: Number(threshold.toFixed(5)),
+            samples: calibrationSamples.length,
+            calibrationMs: Math.round(now - calibrationStartedAt)
+          });
+
           setAgentState('waiting');
           if (recordCaption) recordCaption.textContent = 'Puedes empezar a hablar';
           if (recordHelper) recordHelper.textContent = 'Nova detectará automáticamente cuando termines.';
           setVoiceStatus('Te escucho…', 'processing');
-          console.log('[NOVA] listen_armed', { noiseFloor: Number(base.toFixed(4)), threshold: Number(threshold.toFixed(4)) });
+
+          console.log('[NOVA] listen_armed', {
+            noiseFloor: Number(base.toFixed(4)),
+            threshold: Number(threshold.toFixed(4))
+          });
         }
+
         interview.vadFrame = requestAnimationFrame(loop);
         return;
       }
 
-      const aboveThreshold = rms >= threshold;
+      const speechStartThreshold = threshold;
+      const speechContinueThreshold = threshold * DESPEGA_AI.vadContinueRatio;
+      const activeThreshold = interview.speechDetected
+        ? speechContinueThreshold
+        : speechStartThreshold;
+      const aboveThreshold = rms >= activeThreshold;
+
+      if (NOVA_DEBUG && now - lastDebugAt >= DESPEGA_AI.vadDebugIntervalMs) {
+        lastDebugAt = now;
+        novaVadDebug('rms', {
+          rms: Number(rms.toFixed(5)),
+          threshold: Number(activeThreshold.toFixed(5)),
+          aboveThreshold,
+          speechDetected: interview.speechDetected,
+          state: interview.agentState
+        });
+      }
 
       if (!interview.speechDetected) {
         if (aboveThreshold) {
-          if (!voiceAboveSince) voiceAboveSince = now;
+          if (!voiceAboveSince) {
+            voiceAboveSince = now;
+            novaVadDebug('speech_candidate', {
+              rms: Number(rms.toFixed(5)),
+              threshold: Number(speechStartThreshold.toFixed(5))
+            });
+          }
+
           if (now - voiceAboveSince >= DESPEGA_AI.vadSpeechStartMs) {
             interview.speechDetected = true;
             interview.noSpeechReminderCount = 0;
+            speechStartedAt = now;
             lastVoiceAt = now;
             setAgentState('listening');
             if (recordCaption) recordCaption.textContent = 'Te escucho…';
             if (recordHelper) recordHelper.textContent = 'Habla con calma; no necesitas tocar nada al terminar.';
             setVoiceStatus('Te estoy escuchando…', 'processing');
+            novaVadDebug('speech_started', {
+              rms: Number(rms.toFixed(5)),
+              threshold: Number(speechStartThreshold.toFixed(5)),
+              delayFromListeningMs: listeningStartedAt ? Math.round(now - listeningStartedAt) : null
+            });
             console.log('[NOVA] speech_started');
           }
         } else {
           voiceAboveSince = 0;
         }
 
-        if (!timeoutHandled && now - startedAt >= DESPEGA_AI.vadNoSpeechMs) {
+        if (
+          !timeoutHandled &&
+          listeningStartedAt &&
+          now - listeningStartedAt >= DESPEGA_AI.vadNoSpeechMs
+        ) {
           timeoutHandled = true;
+          novaVadDebug('no_speech_timeout', {
+            waitedMs: Math.round(now - listeningStartedAt),
+            threshold: Number(speechStartThreshold.toFixed(5))
+          });
           stopVoiceActivityDetection();
           handleNoSpeechTimeout(lifecycle);
           return;
@@ -4725,15 +4835,28 @@ main{width:100%;height:100%}
       } else {
         if (aboveThreshold) {
           lastVoiceAt = now;
+          if (silenceUiShown) {
+            novaVadDebug('speech_resumed', {
+              rms: Number(rms.toFixed(5)),
+              threshold: Number(speechContinueThreshold.toFixed(5))
+            });
+          }
           silenceUiShown = false;
           if (interview.agentState !== 'listening') setAgentState('listening');
         } else if (lastVoiceAt) {
           const silenceMs = now - lastVoiceAt;
+
           if (silenceMs >= 550 && !silenceUiShown) {
             silenceUiShown = true;
+            novaVadDebug('silence_started', { silenceMs: Math.round(silenceMs) });
             setAgentState('silence_grace');
           }
+
           if (silenceMs >= DESPEGA_AI.vadSilenceMs) {
+            novaVadDebug('speech_ended', {
+              silenceMs: Math.round(silenceMs),
+              speechDurationMs: speechStartedAt ? Math.round(now - speechStartedAt) : null
+            });
             console.log('[NOVA] silence_detected', { silenceMs: Math.round(silenceMs) });
             stopVoiceActivityDetection();
             stopRealRecording('silence');
