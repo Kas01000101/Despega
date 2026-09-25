@@ -3029,8 +3029,8 @@ main{width:100%;height:100%}
   // NUNCA coloques GEMINI_API_KEY aquí: vive como secreto del backend.
   // ============================================================
   const DESPEGA_AI = Object.freeze({
-    supabaseUrl: 'https://dkvxbvacsegneszuopwy.supabase.co',
-    supabasePublishableKey: 'sb_publishable_du6w0Mw8ke8EIvHzr8vucg_scILyySJ',
+    supabaseUrl: 'https://ojmiuvlrffbojvofegad.supabase.co',
+    supabasePublishableKey: 'sb_publishable_xQPKqBIqtWFxv20Qrob_qg_UC6QY_a8',
     functionName: 'despega-ai',
     // Cuando despliegues Kokoro, coloca aquí su endpoint, p. ej. https://tts.example.com/synthesize
     kokoroTtsUrl: '',
@@ -4038,6 +4038,12 @@ main{width:100%;height:100%}
     form.append('profile', JSON.stringify(requestMeta.profile || { ...loadPriorProfile(), ...interview.profile }));
     form.append('conversation_history', JSON.stringify((requestMeta.conversationHistory || interview.conversationHistory || []).slice(-10)));
     form.append('current_example', requestMeta.currentExample || interview.currentExample || '');
+    form.append('duration_ms', String(
+      Number.isFinite(requestMeta.durationMs)
+        ? requestMeta.durationMs
+        : (Number.isFinite(interview.lastRecordingDurationMs) ? interview.lastRecordingDurationMs : 0)
+    ));
+    form.append('onboarding_data', JSON.stringify(loadPriorProfile()));
 
     console.log('[NOVA] sending to Supabase', {
       questionId: requestMeta.questionId || interview.questionId,
