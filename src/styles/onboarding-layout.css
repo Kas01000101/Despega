@@ -18,7 +18,7 @@
     min-height: 0 !important;
     max-height: 100dvh;
     box-sizing: border-box;
-    grid-template-columns: minmax(0, 42%) minmax(0, 58%) !important;
+    grid-template-columns: minmax(0, 58%) minmax(0, 42%) !important;
     align-items: stretch;
     overflow: hidden !important;
     overscroll-behavior: none;
@@ -60,7 +60,7 @@
   }
 
   #registerView .register-card {
-    width: min(100%, 590px) !important;
+    width: min(100%, 620px) !important;
   }
 
   #step2View .flow-card,
@@ -113,7 +113,7 @@
   #registerView,
   #step2View,
   #step3View {
-    grid-template-columns: minmax(0, 40%) minmax(0, 60%) !important;
+    grid-template-columns: minmax(0, 58%) minmax(0, 42%) !important;
   }
 
   .language-wrap {
@@ -132,7 +132,7 @@
 
   /* PASO 1 — Tus datos */
   #registerView .register-card {
-    width: min(100%, 570px) !important;
+    width: min(100%, 620px) !important;
     padding: 13px 20px 14px !important;
     gap: 6px !important;
     border-radius: 22px !important;
@@ -220,7 +220,7 @@
 
   /* PASO 2 — Tu situación */
   #step2View .flow-card {
-    width: min(100%, 570px) !important;
+    width: min(100%, 620px) !important;
   }
 
   #step2View .step2-card {
@@ -349,32 +349,40 @@
 
   #step2View .onboarding-art,
   #step3View .onboarding-art {
-    width: min(91%, 555px) !important;
+    width: min(88%, 650px) !important;
     max-height: calc(100dvh - 88px) !important;
   }
 
-  /* Paso 1: reduce solo la escala, sin rediseñar la ilustración. */
+  /*
+   * PASO 1 — composición obligatoria basada en Login.
+   * No encoger el hero para hacer sitio al formulario: el formulario se compacta,
+   * mientras el lado visual conserva la jerarquía y escala de la pantalla maestra.
+   */
   #registerView .hero-copy {
-    margin-top: 10px !important;
-    width: min(560px, 88%) !important;
+    margin-top: 0 !important;
+    width: min(760px, 88%) !important;
   }
 
   #registerView .hero-logo {
-    width: 205px !important;
+    width: clamp(235px, 18vw, 310px) !important;
+    max-width: 42% !important;
   }
 
   #registerView .register-hero-copy h1 {
-    font-size: 36px !important;
+    font-size: clamp(44px, 4vw, 64px) !important;
+    line-height: 0.98 !important;
+    letter-spacing: -0.035em !important;
   }
 
   #registerView .hero-copy p {
-    margin-top: 10px !important;
-    font-size: 12.4px !important;
+    margin-top: 14px !important;
+    font-size: clamp(14px, 1.15vw, 18px) !important;
+    line-height: 1.35 !important;
   }
 
   #registerView .register-characters {
-    width: min(560px, 84%) !important;
-    max-height: 40% !important;
+    width: min(760px, 82%) !important;
+    max-height: 53dvh !important;
   }
 }
 
