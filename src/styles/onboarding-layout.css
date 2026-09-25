@@ -15,13 +15,14 @@
   #step3View {
     width: 100%;
     height: 100dvh;
-    min-height: 100dvh;
+    min-height: 0 !important;
+    max-height: 100dvh;
+    box-sizing: border-box;
     grid-template-columns: minmax(0, 42%) minmax(0, 58%) !important;
     align-items: stretch;
-    overflow-x: hidden !important;
-    overflow-y: auto !important;
-    overscroll-behavior-y: contain;
-    scrollbar-gutter: stable;
+    overflow: hidden !important;
+    overscroll-behavior: none;
+    scrollbar-gutter: auto;
   }
 
   /* Zona global Inicio / Idioma */
@@ -36,11 +37,14 @@
   #step3View .flow-panel {
     min-width: 0;
     min-height: 0;
-    place-items: start center !important;
-    align-content: start;
-    padding-top: 78px !important;
+    height: 100dvh;
+    box-sizing: border-box;
+    overflow: hidden !important;
+    place-items: center !important;
+    align-content: center;
+    padding-top: 68px !important;
     padding-right: clamp(24px, 3vw, 46px) !important;
-    padding-bottom: 28px !important;
+    padding-bottom: 18px !important;
     padding-left: clamp(18px, 2vw, 30px) !important;
   }
 
@@ -50,8 +54,9 @@
   #step3View .flow-card {
     height: auto !important;
     min-height: 0 !important;
-    max-height: none !important;
-    align-self: start;
+    max-height: calc(100dvh - 86px) !important;
+    box-sizing: border-box;
+    align-self: center;
   }
 
   #registerView .register-card {
@@ -104,7 +109,7 @@
 }
 
 /* Laptop real: 1366x768 suele dejar ~650–710 px útiles por el navegador. */
-@media (min-width: 781px) and (max-height: 719px) {
+@media (min-width: 781px) and (max-height: 800px) {
   #registerView,
   #step2View,
   #step3View {
@@ -119,17 +124,17 @@
   #registerView .register-panel,
   #step2View .flow-panel,
   #step3View .flow-panel {
-    padding-top: 62px !important;
+    padding-top: 54px !important;
     padding-right: 24px !important;
-    padding-bottom: 16px !important;
+    padding-bottom: 12px !important;
     padding-left: 14px !important;
   }
 
   /* PASO 1 — Tus datos */
   #registerView .register-card {
     width: min(100%, 570px) !important;
-    padding: 15px 22px 16px !important;
-    gap: 7px !important;
+    padding: 13px 20px 14px !important;
+    gap: 6px !important;
     border-radius: 22px !important;
   }
 
@@ -154,7 +159,7 @@
   }
 
   #registerView .register-heading h2 {
-    font-size: 25px !important;
+    font-size: 23px !important;
     line-height: 1.06 !important;
   }
 
@@ -177,8 +182,8 @@
 
   #registerView .input-control,
   #registerView .geo-select-control {
-    height: 40px !important;
-    min-height: 40px !important;
+    height: 36px !important;
+    min-height: 36px !important;
     border-radius: 11px !important;
   }
 
@@ -208,9 +213,9 @@
   }
 
   #registerView .register-continue {
-    height: 42px !important;
-    margin-top: 1px !important;
-    font-size: 12px !important;
+    height: 39px !important;
+    margin-top: 0 !important;
+    font-size: 11.5px !important;
   }
 
   /* PASO 2 — Tu situación */
@@ -219,13 +224,13 @@
   }
 
   #step2View .step2-card {
-    padding: 15px 22px 16px !important;
-    gap: 7px !important;
+    padding: 13px 20px 14px !important;
+    gap: 6px !important;
     border-radius: 22px !important;
   }
 
   #step2View .step2-card .flow-heading h2 {
-    font-size: 24px !important;
+    font-size: 22px !important;
     line-height: 1.06 !important;
   }
 
@@ -250,8 +255,8 @@
   }
 
   #step2View .step2-card .binary-grid .choice-chip {
-    min-height: 35px !important;
-    padding: 5px 10px !important;
+    min-height: 33px !important;
+    padding: 4px 10px !important;
     font-size: 10.2px !important;
   }
 
@@ -261,8 +266,8 @@
 
   #step2View .step2-card .secondary-button,
   #step2View .step2-card .flow-primary {
-    height: 36px !important;
-    font-size: 10.5px !important;
+    height: 34px !important;
+    font-size: 10.3px !important;
   }
 
   /* PASO 3 — Conocerte mejor */
