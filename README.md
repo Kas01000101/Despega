@@ -2,54 +2,58 @@
 
 Despega+ es un prototipo web de orientación educativa y laboral para jóvenes. El flujo recopila datos personales y situación actual, y luego utiliza **Nova**, un agente conversacional por voz, para conocer objetivos, intereses, habilidades, experiencia y barreras antes de construir una ruta personalizada.
 
-## Estado actual
+## Estado del MVP
 
 - Login y registro visual.
 - Paso 1: datos personales + ubicación geográfica.
 - Paso 2: nivel educativo, situación de estudio y trabajo.
-- Paso 2 corregido para conservar proporciones consistentes entre ilustración y formulario.
-- Paso 3: Nova, agente conversacional por voz con memoria de corto plazo.
-- Comandos de Nova: repetir pregunta, repetir ejemplo, explicar, pausar y saltar.
-- Backend preparado como Supabase Edge Function `despega-ai`.
-- La `GEMINI_API_KEY` **no se almacena en el repositorio**.
+- Paso 3: Nova con conversación por voz, memoria de corto plazo, VAD y escucha automática.
+- El micrófono funciona como respaldo manual; el flujo normal intenta detectar inicio y fin de voz automáticamente.
+- Comandos: repetir pregunta, repetir ejemplo, explicar, pausar y saltar.
+- Backend en un proyecto Supabase exclusivo de DESPEGA.
+- Persistencia de sesiones, perfiles y turnos.
+- `GEMINI_API_KEY` solo existe como secreto del backend.
 
 ## Arquitectura
 
 ```text
 Navegador
-├─ index.html (frontend standalone)
+├─ index.html
+├─ SpeechSynthesis / TTS
 ├─ MediaRecorder
+├─ AudioContext + AnalyserNode (VAD)
 ├─ memoria temporal / IndexedDB
-└─ Supabase Edge Function: despega-ai
+└─ Supabase DESPEGA
+      ├─ Edge Function: despega-ai
+      ├─ profiles
+      ├─ nova_sessions
+      ├─ nova_turns
       └─ Gemini
-          ├─ intención conversacional
           ├─ comprensión del audio
+          ├─ intención conversacional
           ├─ extracción de perfil
-          └─ siguiente pregunta adaptativa
+          └─ seguimiento semántico
 ```
 
-## Estructura del repositorio
+## Supabase del MVP
+
+- **Proyecto:** DESPEGA
+- **Project ref:** `ojmiuvlrffbojvofegad`
+- **Región:** `sa-east-1`
+- **Edge Function:** `despega-ai`
+- **Tablas:** `profiles`, `nova_sessions`, `nova_turns`
+- **RLS:** activado
+- El navegador no escribe directamente en PostgreSQL.
+
+El esquema reproducible vive en:
 
 ```text
-.
-├── index.html
-├── README.md
-├── .gitignore
-├── .env.example
-├── docs/
-│   ├── NOVA_COMPORTAMIENTO.md
-│   └── NOVA_MEMORIA_Y_COMANDOS.md
-└── supabase/
-    ├── config.toml
-    └── functions/
-        └── despega-ai/
-            ├── index.ts
-            └── deno.json
+supabase/migrations/20260925_create_nova_mvp.sql
 ```
 
 ## Ejecutar localmente
 
-Para usar el micrófono, sirve la aplicación por HTTP local en lugar de abrirla con `file://`:
+El micrófono requiere HTTPS o localhost. No abras el archivo directamente con `file://`.
 
 ```bash
 python -m http.server 5500
@@ -63,26 +67,35 @@ http://localhost:5500/
 
 ## Configurar Gemini
 
-En Supabase:
+En Supabase → Edge Functions → Secrets:
 
-1. Abre **Edge Functions → Secrets**.
-2. Crea el secreto `GEMINI_API_KEY`.
-3. Pega ahí la clave de Google AI Studio.
-4. No copies la clave dentro de `index.html`, GitHub ni archivos `.env` versionados.
+```text
+GEMINI_API_KEY
+```
 
-Opcionalmente puedes definir:
+Opcionales:
 
 ```text
 GEMINI_MODEL
+ALLOWED_ORIGINS
 ```
 
-## Seguridad
+Nunca colocar `GEMINI_API_KEY` ni `SUPABASE_SERVICE_ROLE_KEY` en HTML, localStorage, IndexedDB o GitHub.
 
-Nunca subir:
+## Flujo objetivo de Nova
 
-- `GEMINI_API_KEY`
-- claves secretas de Supabase
-- `service_role`
-- archivos `.env` reales
+```text
+Nova habla
+→ TTS termina correctamente
+→ micrófono se activa
+→ VAD detecta voz
+→ VAD detecta silencio final
+→ MediaRecorder se detiene
+→ despega-ai
+→ Gemini
+→ persistencia
+→ Nova responde
+→ siguiente turno
+```
 
-El archivo `.env.example` contiene únicamente los nombres de variables, sin valores.
+Si el TTS falla, Nova **no debe activar la escucha automática**. La pregunta permanece visible y el usuario puede continuar manualmente.
