@@ -740,6 +740,11 @@
 
 
 /* === NOVA STEP 3 — CONVERSATION MODAL V3 === */
+
+#step3View.nova-page-view[hidden] {
+  display: none !important;
+}
+
 #step3View.nova-page-view {
   display: grid !important;
   grid-template-columns: 1fr !important;
