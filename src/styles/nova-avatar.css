@@ -492,3 +492,38 @@
     transition: none !important;
   }
 }
+
+/* === NOVA HANDS-FREE STATES ===
+ * Functional states used by the conversational turn manager.
+ * The face never changes: exactly two white eyes, no mouth.
+ */
+
+/* ARMING: brief microphone preparation before listening. */
+.nova-orb[data-state="arming"] .agent-orb-core {
+  animation: nova2Breathe 3.2s ease-in-out infinite;
+}
+.nova-orb[data-state="arming"] .orbit-one {
+  border-color: rgba(118, 103, 248, 0.46);
+  opacity: 0.72;
+  animation: nova2HaloBreath 2.6s ease-in-out infinite;
+}
+
+/* WAITING: microphone ready; no speech detected yet. */
+.nova-orb[data-state="waiting"] .agent-orb-core {
+  animation: nova2Breathe 3.6s ease-in-out infinite;
+}
+.nova-orb[data-state="waiting"] .orbit-one {
+  border-color: rgba(77, 207, 232, 0.56);
+  opacity: 0.78;
+  animation: nova2HaloBreath 2.8s ease-in-out infinite;
+}
+
+/* SILENCE GRACE: user may be thinking; reduce activity without changing face. */
+.nova-orb[data-state="silence_grace"] .agent-orb-core {
+  animation: nova2Breathe 4s ease-in-out infinite;
+}
+.nova-orb[data-state="silence_grace"] .orbit-one {
+  border-color: rgba(77, 207, 232, 0.38);
+  opacity: 0.52;
+  animation: nova2HaloBreath 3.6s ease-in-out infinite;
+}
