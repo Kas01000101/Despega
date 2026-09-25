@@ -191,6 +191,39 @@
   animation: nova2ListeningHalo 1.8s ease-out infinite !important;
 }
 
+/* ARMING: preparación breve antes de escuchar. */
+.nova-orb[data-state="arming"] .agent-orb-core {
+  animation: nova2Breathe 3.2s ease-in-out infinite !important;
+}
+
+.nova-orb[data-state="arming"] .orbit-one {
+  border-color: rgba(118, 103, 248, 0.46) !important;
+  opacity: 0.72 !important;
+  animation: nova2HaloBreath 2.6s ease-in-out infinite !important;
+}
+
+/* WAITING: micrófono listo, todavía sin voz detectada. */
+.nova-orb[data-state="waiting"] .agent-orb-core {
+  animation: nova2Breathe 3.6s ease-in-out infinite !important;
+}
+
+.nova-orb[data-state="waiting"] .orbit-one {
+  border-color: rgba(77, 207, 232, 0.56) !important;
+  opacity: 0.78 !important;
+  animation: nova2HaloBreath 2.8s ease-in-out infinite !important;
+}
+
+/* SILENCE GRACE: el usuario puede estar pensando; no cambia el rostro. */
+.nova-orb[data-state="silence_grace"] .agent-orb-core {
+  animation: nova2Breathe 4s ease-in-out infinite !important;
+}
+
+.nova-orb[data-state="silence_grace"] .orbit-one {
+  border-color: rgba(77, 207, 232, 0.38) !important;
+  opacity: 0.52 !important;
+  animation: nova2HaloBreath 3.6s ease-in-out infinite !important;
+}
+
 /* PROCESSING / THINKING */
 .nova-orb[data-state="thinking"] .orb-eye,
 .nova-orb[data-state="processing"] .orb-eye {
