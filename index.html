@@ -3566,7 +3566,6 @@ main{width:100%;height:100%}
   localStorage.setItem('despegaInterviewSession', interview.sessionId);
 
   const playExampleButton = $('#playExampleButton');
-  const speakerPromptButton = $('#speakerPromptButton');
   const exampleAudioCard = $('#exampleAudioCard');
   const exampleQuote = $('#exampleQuote');
   const recordAnswerButton = $('#recordAnswerButton');
@@ -3678,7 +3677,6 @@ main{width:100%;height:100%}
     interview.isProcessing = busy;
     if (recordAnswerButton) recordAnswerButton.disabled = busy;
     if (playExampleButton) playExampleButton.disabled = busy;
-    if (speakerPromptButton) speakerPromptButton.disabled = busy;
     aiQuestionBubble?.classList.toggle('processing', busy);
   }
 
@@ -4041,7 +4039,6 @@ main{width:100%;height:100%}
     }
 
     exampleAudioCard?.classList.remove('playing');
-    speakerPromptButton?.classList.remove('speaking');
 
     if (currentStep === 'step3') {
       if (interview.mediaRecorder?.state === 'recording') setAgentState('listening');
@@ -4217,7 +4214,6 @@ main{width:100%;height:100%}
     }
 
     setAgentState('speaking');
-    speakerPromptButton?.classList.add('speaking');
     if (markExample) exampleAudioCard?.classList.add('playing');
 
     let result = ttsResult(false, 'unavailable');
@@ -4243,8 +4239,7 @@ main{width:100%;height:100%}
       result = ttsResult(false, 'unexpected');
     } finally {
       exampleAudioCard?.classList.remove('playing');
-      speakerPromptButton?.classList.remove('speaking');
-
+  
       if (currentStep === 'step3' && lifecycle === interview.lifecycleId) {
         if (interview.mediaRecorder?.state === 'recording') setAgentState('listening');
         else if (interview.isProcessing) setAgentState('thinking');
@@ -4274,12 +4269,6 @@ main{width:100%;height:100%}
   playExampleButton?.addEventListener('click', () => {
     if (exampleAudioCard?.classList.contains('playing')) return stopSpeaking();
     speakText(interview.currentExample, true);
-  });
-  speakerPromptButton?.addEventListener('click', async () => {
-    if (speakerPromptButton?.classList.contains('speaking')) return stopSpeaking();
-    await initializeNovaAudio();
-    const speech = await speakText(interview.currentQuestion, false);
-    if (speech.ok && interview.autoListenEnabled) await beginListeningTurn();
   });
 
   // -------- Gemini via Supabase Edge Function --------
