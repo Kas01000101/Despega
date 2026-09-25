@@ -932,3 +932,52 @@
     height: calc(100dvh - 212px) !important;
   }
 }
+
+
+/* === CANONICAL RIGHT-CARD ANCHOR — PASOS 2 Y 3 ===
+ * Corrige el salto vertical entre "Tu situación" y "Conocerte mejor".
+ *
+ * Causa raíz:
+ * .flow-panel estaba centrando verticalmente cada card (place-items/align-content:center).
+ * Como Paso 3 es bastante más alto que Paso 2, su borde superior subía hacia Inicio/Idioma.
+ *
+ * Regla:
+ * - ambos pasos comparten el MISMO anclaje superior;
+ * - la altura interna de cada card ya no cambia su coordenada Y;
+ * - en laptops de poca altura el anclaje se reduce para conservar el contenido completo.
+ */
+@media (min-width: 781px) {
+  #step2View .flow-panel,
+  #step3View .flow-panel {
+    display: grid !important;
+    place-items: start center !important;
+    align-content: start !important;
+    justify-content: center !important;
+    padding-top: clamp(168px, 19dvh, 206px) !important;
+  }
+
+  #step2View .flow-card,
+  #step2View .step2-card,
+  #step3View .flow-card,
+  #step3View .step3-card {
+    align-self: start !important;
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+  }
+}
+
+/* Laptop 1366×768 y viewports equivalentes. */
+@media (min-width: 781px) and (max-height: 800px) {
+  #step2View .flow-panel,
+  #step3View .flow-panel {
+    padding-top: 82px !important;
+  }
+}
+
+/* Alturas muy reducidas: preservar acceso a CTA sin volver a centrar la card. */
+@media (min-width: 781px) and (max-height: 639px) {
+  #step2View .flow-panel,
+  #step3View .flow-panel {
+    padding-top: 62px !important;
+  }
+}
