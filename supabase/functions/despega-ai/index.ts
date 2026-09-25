@@ -11,7 +11,7 @@ const MAX_EXAMPLE_CHARS = 1500;
 const MAX_HISTORY_TURNS = 10;
 const MAX_PROFILE_ITEMS = 30;
 const RATE_LIMIT_PER_MINUTE = 20;
-const MODEL = Deno.env.get("GEMINI_MODEL") || "gemini-2.5-flash";
+const MODEL = Deno.env.get("GEMINI_MODEL") || "gemini-3.8-flash";
 
 const VALID_INTENTS = new Set([
   "answer",
