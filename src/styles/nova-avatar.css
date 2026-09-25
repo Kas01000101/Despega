@@ -693,3 +693,110 @@
   #step3View .nova-speaking-wave span:nth-child(4) { height: 34px; }
   #step3View .nova-speaking-wave span:nth-child(5) { height: 24px; }
 }
+
+
+/* ============================================================
+   DESPEGA+ — Nova Step 3 visual refinement (scoped)
+   ============================================================ */
+#step3View .nova-toolbar-minimal{
+  min-height:0!important;
+  height:auto!important;
+  margin:0!important;
+  padding:0!important;
+  display:flex!important;
+  justify-content:flex-end!important;
+  pointer-events:none;
+}
+#step3View .nova-toolbar-minimal .offline-pill:not(.show){display:none!important}
+
+#step3View .nova-orb{
+  width:196px!important;
+  height:196px!important;
+  filter:drop-shadow(0 0 20px rgba(77,207,232,.22)) drop-shadow(0 0 34px rgba(185,92,255,.18));
+  animation:nova2Float 3.4s ease-in-out infinite;
+}
+#step3View .nova-orb .agent-orb-core{
+  width:142px!important;
+  height:142px!important;
+  background:
+    radial-gradient(circle at 28% 20%, rgba(255,255,255,.92) 0 2.5%, rgba(255,255,255,.42) 5%, rgba(255,255,255,.08) 17%, transparent 27%),
+    radial-gradient(circle at 78% 76%, rgba(77,207,232,.78) 0 8%, transparent 35%),
+    radial-gradient(circle at 28% 54%, rgba(240,107,185,.62) 0 8%, transparent 35%),
+    linear-gradient(145deg,#f58bc7 0%,var(--nova-violet) 28%,var(--nova-indigo) 58%,var(--nova-cyan) 100%)!important;
+  box-shadow:
+    inset 0 0 0 1px rgba(255,255,255,.42),
+    inset -15px -18px 34px rgba(55,43,145,.2),
+    0 18px 42px rgba(89,77,194,.25),
+    0 0 32px rgba(185,92,255,.26),
+    0 0 58px rgba(77,207,232,.22),
+    0 0 78px rgba(240,107,185,.12)!important;
+}
+#step3View .nova-orb::before{opacity:.28;animation:nova2Orbit 11s linear infinite}
+#step3View .nova-orb::after{opacity:.48;animation:nova2AccentBreath 2.8s ease-in-out infinite}
+#step3View .nova-orb .orbit-one{opacity:.34;animation:nova2HaloBreath 3.1s ease-in-out infinite}
+#step3View .nova-orb .orbit-two{opacity:.24;animation:nova2OrbitReverse 12s linear infinite}
+
+#step3View .nova-speaking-wave{
+  position:absolute;
+  inset:0;
+  z-index:5;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  gap:5px;
+  pointer-events:none;
+}
+#step3View .nova-speaking-wave span{
+  display:block;
+  width:5px;
+  height:26px;
+  border-radius:999px;
+  background:#fff;
+  box-shadow:0 0 12px rgba(255,255,255,.58);
+  transform-origin:center;
+  animation:novaStep3Wave .72s ease-in-out infinite alternate;
+}
+#step3View .nova-speaking-wave span:nth-child(2){animation-delay:-.18s;height:36px}
+#step3View .nova-speaking-wave span:nth-child(3){animation-delay:-.34s;height:44px}
+#step3View .nova-speaking-wave span:nth-child(4){animation-delay:-.22s;height:34px}
+#step3View .nova-speaking-wave span:nth-child(5){animation-delay:-.08s;height:24px}
+
+#step3View .nova-orb[data-state="speaking"] .nova-speaking-wave{display:flex}
+#step3View .nova-orb[data-state="speaking"] .orb-face{opacity:0!important}
+#step3View .nova-orb[data-state="speaking"] .agent-orb-core{
+  box-shadow:
+    inset 0 0 0 1px rgba(255,255,255,.48),
+    0 0 34px rgba(240,107,185,.38),
+    0 0 66px rgba(185,92,255,.34),
+    0 0 88px rgba(77,207,232,.28)!important;
+}
+#step3View .nova-orb[data-state="speaking"]::before{opacity:1!important;animation:nova2Orbit 4.8s linear infinite!important}
+#step3View .nova-orb[data-state="speaking"] .orbit-one{opacity:1!important;animation:nova2SpeakingHalo 1.15s ease-in-out infinite!important}
+#step3View .nova-orb[data-state="speaking"] .orbit-two{opacity:.9!important;animation:nova2OrbitReverse 4.4s linear infinite!important}
+
+#step3View .nova-orb[data-state="listening"] .orb-face,
+#step3View .nova-orb[data-state="waiting"] .orb-face{opacity:1!important}
+#step3View .nova-orb[data-state="listening"] .orbit-one,
+#step3View .nova-orb[data-state="waiting"] .orbit-one{opacity:.92!important;animation:nova2ListeningPulse 1.35s ease-in-out infinite!important}
+#step3View .nova-orb[data-state="listening"]::before,
+#step3View .nova-orb[data-state="waiting"]::before{opacity:.7!important}
+
+#step3View .nova-orb[data-state="processing"] .orb-face,
+#step3View .nova-orb[data-state="thinking"] .orb-face{opacity:.18!important}
+#step3View .nova-orb[data-state="processing"] .orbit-two,
+#step3View .nova-orb[data-state="thinking"] .orbit-two{opacity:1!important;animation:nova2OrbitReverse 2.7s linear infinite!important}
+#step3View .nova-orb[data-state="processing"]::before,
+#step3View .nova-orb[data-state="thinking"]::before{opacity:.9!important;animation:nova2Orbit 3.2s linear infinite!important}
+
+#step3View .nova-orb[data-state="ready_to_finish"] .agent-orb-core{
+  animation:nova2SoftConfirm 1.1s ease-in-out 1,nova2Breathe 3.6s ease-in-out infinite 1.1s;
+}
+
+@keyframes novaStep3Wave{
+  from{transform:scaleY(.55);opacity:.76}
+  to{transform:scaleY(1.18);opacity:1}
+}
+@keyframes nova2ListeningPulse{
+  0%,100%{transform:scale(.985);box-shadow:0 0 16px rgba(77,207,232,.16)}
+  50%{transform:scale(1.035);box-shadow:0 0 32px rgba(77,207,232,.34)}
+}

@@ -2466,11 +2466,12 @@ main{width:100%;height:100%}
   <link rel="stylesheet" href="./src/styles/onboarding-layout.css">
 
 <style id="nova-finish-controls">
-#step3View .nova-actions{justify-content:space-between!important;gap:14px!important}
-#step3View .nova-finish-button{min-width:132px!important;height:42px!important;min-height:42px!important;margin:0!important}
+#step3View .nova-actions{display:flex!important;justify-content:flex-end!important;align-items:center!important;gap:14px!important}
+#step3View #step3Back{flex:0 0 158px!important;width:158px!important;min-width:158px!important;height:46px!important;min-height:46px!important;margin:0!important}
+#step3View .nova-finish-button{flex:0 0 194px!important;width:194px!important;min-width:194px!important;height:46px!important;min-height:46px!important;margin:0!important}
 #step3View .nova-finish-button:disabled{opacity:.42!important;cursor:not-allowed!important;box-shadow:none!important}
 #step3View .nova-finish-button:not(:disabled){box-shadow:0 10px 24px rgba(241,38,141,.16)!important}
-@media(max-width:560px){#step3View .nova-actions{align-items:stretch!important}#step3View .nova-actions>button{flex:1 1 0!important;min-width:0!important}}
+@media(max-width:560px){#step3View .nova-actions{justify-content:center!important}#step3View #step3Back,#step3View .nova-finish-button{flex:1 1 0!important;width:auto!important;min-width:0!important}}
 </style>
 </head>
 <body>
@@ -2831,27 +2832,9 @@ main{width:100%;height:100%}
             <li class="step"><span class="step-circle">4</span><span class="step-label">Resumen</span></li>
           </ol>
 
-          <div class="nova-toolbar">
-            <div class="nova-toolbar-left">
-              <span class="ai-architecture-badge nova-mode-badge"><span class="nova-mode-dot" aria-hidden="true"></span>Modo conversación</span>
-              <span id="offlinePill" class="offline-pill">Sin conexión · guardaremos tu respuesta</span>
-            </div>
-
-            <div class="example-audio-card agent-example-card nova-example-compact" id="exampleAudioCard">
-              <button class="play-example" id="playExampleButton" type="button" aria-label="Escuchar ejemplo">
-                <svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6l10 6-10 6z"></path></svg>
-                <svg class="pause-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h3v12H8zM14 6h3v12h-3z"></path></svg>
-              </button>
-              <div class="example-audio-meta">
-                <div class="example-waveform" aria-hidden="true">
-                  <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
-                  <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
-                </div>
-              </div>
-              <span class="visually-hidden example-audio-title">Escuchar ejemplo</span>
-              <span class="visually-hidden example-time">Voz</span>
-              <span class="visually-hidden example-quote" id="exampleQuote">Por ejemplo, me gustaría terminar mis estudios y luego llevar un curso corto de tecnología.</span>
-            </div>
+          <div class="nova-toolbar nova-toolbar-minimal">
+            <span id="offlinePill" class="offline-pill">Sin conexión · guardaremos tu respuesta</span>
+            <span class="visually-hidden example-quote" id="exampleQuote">Por ejemplo: terminar tus estudios, aprender una habilidad, conseguir tu primer trabajo o estudiar una carrera técnica.</span>
           </div>
 
           <main class="nova-conversation-stage" id="agentStage">
@@ -3085,8 +3068,8 @@ main{width:100%;height:100%}
     maxInterviewQuestions: 5,
     targetInterviewQuestions: 5,
     minInterviewQuestions: 3,
-    novaSpeechRate: 1.03,
-    novaSpeechPitch: 1.08,
+    novaSpeechRate: 0.96,
+    novaSpeechPitch: 1.12,
     novaSpeechVolume: 1
   });
 
@@ -3657,7 +3640,11 @@ main{width:100%;height:100%}
     speechDetected: false,
     autoListenEnabled: true,
     noSpeechReminderCount: 0,
-    stopReason: 'manual'
+    stopReason: 'manual',
+    turnSequence: 0,
+    activeTurnId: 0,
+    listenRecoveryAttempts: 0,
+    listenWatchdog: null
   };
 
   localStorage.setItem('despegaInterviewSession', interview.sessionId);
@@ -3727,8 +3714,13 @@ main{width:100%;height:100%}
     },
     processing: {
       label: 'Analizando tu respuesta…',
-      caption: 'Analizando tu respuesta…',
-      helper: 'Estamos preparando el siguiente paso.'
+      caption: 'Respuesta capturada',
+      helper: 'Nova está preparando la siguiente pregunta…'
+    },
+    ready_to_finish: {
+      label: 'Tu perfil está listo',
+      caption: 'Ya tengo lo necesario',
+      helper: 'Pulsa Finalizar para construir tu ruta.'
     },
     no_speech_1: {
       label: 'No escuché una respuesta todavía',
@@ -3876,6 +3868,48 @@ main{width:100%;height:100%}
     if (agentGreeting) agentGreeting.textContent = 'Conocerte mejor con Nova';
   }
 
+  function clearListeningWatchdog() {
+    if (interview.listenWatchdog) clearTimeout(interview.listenWatchdog);
+    interview.listenWatchdog = null;
+  }
+
+  function novaTurnLog(event, extra = {}) {
+    console.log(`[NOVA TURN ${interview.activeTurnId || '-'}] ${event}`, extra);
+  }
+
+  async function resumeListeningAfterSpeech(source = 'turn') {
+    if (currentStep !== 'step3' || !interview.autoListenEnabled || interview.isProcessing) return false;
+    clearListeningWatchdog();
+    novaTurnLog('listening_arm', { source });
+    let started = false;
+    try {
+      started = await beginListeningTurn();
+    } catch (error) {
+      console.warn('[NOVA LISTEN] start_failed', error);
+    }
+    if (started) {
+      interview.listenRecoveryAttempts = 0;
+      return true;
+    }
+
+    if (currentStep !== 'step3' || !interview.autoListenEnabled) return false;
+    interview.listenWatchdog = setTimeout(async () => {
+      if (currentStep !== 'step3' || !interview.autoListenEnabled || interview.isProcessing) return;
+      if (['listening','waiting','recording','silence_grace'].includes(interview.agentState) || interview.recordingState === 'recording') return;
+      if (interview.listenRecoveryAttempts >= 1) {
+        showNovaNotice('No pude activar la escucha automática', 'Toca el micrófono para continuar.', 'paused');
+        setAgentState('paused');
+        if (recordAnswerButton) recordAnswerButton.disabled = false;
+        return;
+      }
+      interview.listenRecoveryAttempts += 1;
+      console.warn('[NOVA WATCHDOG] recovering listening', { source });
+      cancelRecordingWithoutProcessing();
+      await beginListeningTurn().catch((error) => console.warn('[NOVA WATCHDOG] recovery_failed', error));
+    }, 1800);
+    return false;
+  }
+
   async function enterStep3Agent() {
     if (currentStep !== 'step3') return;
     refreshAgentIdentity();
@@ -3903,13 +3937,11 @@ main{width:100%;height:100%}
       interview.currentExample
     );
 
-    const speech = await speakText(welcome, false);
-    if (
-      speech.ok &&
-      currentStep === 'step3' &&
-      interview.autoListenEnabled
-    ) {
-      await beginListeningTurn();
+    novaTurnLog('tts_start', { source: 'welcome' });
+    await speakText(welcome, false).catch((error) => console.warn('[NOVA TTS] welcome_failed', error));
+    novaTurnLog('tts_end', { source: 'welcome' });
+    if (currentStep === 'step3' && interview.autoListenEnabled) {
+      await resumeListeningAfterSpeech('welcome');
     }
   }
 
@@ -4138,7 +4170,7 @@ main{width:100%;height:100%}
         composeNovaTurn(result?.control_response || 'Claro, te la repito.', interview.currentQuestion),
         false
       );
-      if (speech.ok) await beginListeningTurn();
+      await resumeListeningAfterSpeech('control');
       return true;
     }
 
@@ -4152,7 +4184,7 @@ main{width:100%;height:100%}
         ),
         true
       );
-      if (speech.ok) await beginListeningTurn();
+      await resumeListeningAfterSpeech('control');
       return true;
     }
 
@@ -4165,7 +4197,7 @@ main{width:100%;height:100%}
         refreshInterviewUI();
       }
       const speech = await speakText(composeNovaTurn(response, interview.currentQuestion), false);
-      if (speech.ok) await beginListeningTurn();
+      await resumeListeningAfterSpeech('control');
       return true;
     }
 
@@ -4214,7 +4246,7 @@ main{width:100%;height:100%}
         ),
         false
       );
-      if (speech.ok) await beginListeningTurn();
+      await resumeListeningAfterSpeech('control');
       return true;
     }
 
@@ -4262,15 +4294,30 @@ main{width:100%;height:100%}
   function selectBrowserVoice(voices = browserVoices) {
     if (!Array.isArray(voices) || !voices.length) return null;
     const normalizeLang = (value) => String(value || '').replace('_', '-').toLowerCase();
-    const exact = (lang) => voices.find((voice) => normalizeLang(voice.lang) === lang);
-    return exact('es-pe')
-      || exact('es-mx')
-      || exact('es-es')
-      || voices.find((voice) => normalizeLang(voice.lang).startsWith('es-'))
-      || voices.find((voice) => /Spanish|Español/i.test(String(voice.name || '')))
-      || voices.find((voice) => voice.default)
-      || voices[0]
-      || null;
+    const normalizeName = (value) => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const femaleHints = ['monica','paulina','helena','sabina','elvira','dalia','luciana','ximena','sofia','female','woman','mujer'];
+    const maleHints = ['jorge','pablo','raul','diego','carlos','male','man','hombre'];
+    const spanish = voices.filter((voice) => {
+      const lang = normalizeLang(voice.lang);
+      const name = normalizeName(voice.name);
+      return lang.startsWith('es') || /spanish|espanol/.test(name);
+    });
+    const isFemale = (voice) => {
+      const name = normalizeName(voice.name);
+      return femaleHints.some((hint) => name.includes(hint)) && !maleHints.some((hint) => name.includes(hint));
+    };
+    const langRank = ['es-pe','es-419','es-mx','es-us','es-es'];
+    for (const lang of langRank) {
+      const match = spanish.find((voice) => normalizeLang(voice.lang) === lang && isFemale(voice));
+      if (match) return match;
+    }
+    const anyFemaleSpanish = spanish.find(isFemale);
+    if (anyFemaleSpanish) return anyFemaleSpanish;
+    for (const lang of langRank) {
+      const match = spanish.find((voice) => normalizeLang(voice.lang) === lang);
+      if (match) return match;
+    }
+    return spanish[0] || voices.find((voice) => voice.default) || voices[0] || null;
   }
 
   async function initializeNovaAudio() {
@@ -4336,6 +4383,7 @@ main{width:100%;height:100%}
 
     clearTimeout(interview.enterTimer);
     clearTimeout(interview.maxTimer);
+    clearListeningWatchdog();
     clearInterval(interview.durationTimer);
     clearTimeout(interview.continuationTimer);
     interview.enterTimer = null;
@@ -4571,7 +4619,7 @@ main{width:100%;height:100%}
 
     const controller = new AbortController();
     interview.requestController = controller;
-    interview.requestTimeout = setTimeout(() => controller.abort(), 45000);
+    interview.requestTimeout = setTimeout(() => controller.abort(), 15000);
 
     const form = new FormData();
     form.append('audio', audioBlob, `despega-${Date.now()}.${audioBlob.type.includes('ogg') ? 'ogg' : audioBlob.type.includes('mp4') ? 'm4a' : 'webm'}`);
@@ -4584,7 +4632,7 @@ main{width:100%;height:100%}
     form.append('target_questions', String(DESPEGA_AI.targetInterviewQuestions));
     form.append('hard_cap_questions', String(DESPEGA_AI.maxInterviewQuestions));
     form.append('profile', JSON.stringify(requestMeta.profile || { ...loadPriorProfile(), ...interview.profile }));
-    form.append('conversation_history', JSON.stringify((requestMeta.conversationHistory || interview.conversationHistory || []).slice(-10)));
+    form.append('conversation_history', JSON.stringify((requestMeta.conversationHistory || interview.conversationHistory || []).slice(-3)));
     form.append('current_example', requestMeta.currentExample || interview.currentExample || '');
     form.append('duration_ms', String(Number.isFinite(requestMeta.durationMs) ? requestMeta.durationMs : (interview.lastRecordingDurationMs || 0)));
     form.append('onboarding_data', JSON.stringify(loadPriorProfile()));
@@ -4595,6 +4643,7 @@ main{width:100%;height:100%}
       bytes: audioBlob.size,
       usefulAnswers: Number.isFinite(requestMeta.usefulAnswersCount) ? requestMeta.usefulAnswersCount : interview.usefulAnswersCount
     });
+    novaTurnLog('api_send', { questionId: requestMeta.questionId || interview.questionId, bytes: audioBlob.size });
 
     try {
       const response = await fetch(`${DESPEGA_AI.supabaseUrl}/functions/v1/${DESPEGA_AI.functionName}`, {
@@ -4610,6 +4659,7 @@ main{width:100%;height:100%}
         throw error;
       }
       console.log('[NOVA] Gemini result', payload);
+      novaTurnLog('api_200', { questionId: requestMeta.questionId || interview.questionId });
       return payload;
     } finally {
       if (interview.requestController === controller) {
@@ -4788,14 +4838,14 @@ main{width:100%;height:100%}
       );
       setVoiceStatus('No escuché una respuesta todavía. Tómate tu tiempo.', 'ok');
 
-      const speech = await speakText('¿Sigues ahí? Tómate tu tiempo. Cuando quieras, cuéntame tu respuesta.', false);
+      await speakText('¿Sigues ahí? Tómate tu tiempo. Cuando quieras, cuéntame tu respuesta.', false)
+        .catch((error) => console.warn('[NOVA TTS] reminder_failed', error));
       if (
-        speech.ok &&
         currentStep === 'step3' &&
         lifecycle === interview.lifecycleId &&
         interview.autoListenEnabled
       ) {
-        await beginListeningTurn();
+        await resumeListeningAfterSpeech('no_speech_reminder');
       }
       return;
     }
@@ -5055,7 +5105,11 @@ main{width:100%;height:100%}
 
   async function beginListeningTurn() {
     clearNovaNotice();
+    clearListeningWatchdog();
     const lifecycle = interview.lifecycleId;
+    const turnId = ++interview.turnSequence;
+    interview.activeTurnId = turnId;
+    novaTurnLog('begin_listening', { lifecycle });
     if (
       currentStep !== 'step3' ||
       lifecycle !== interview.lifecycleId ||
@@ -5084,7 +5138,9 @@ main{width:100%;height:100%}
       !interview.autoListenEnabled
     ) return false;
 
-    return startRealRecording(null, { lifecycle, automatic: true });
+    const started = await startRealRecording(null, { lifecycle, automatic: true });
+    novaTurnLog(started ? 'vad_ready' : 'listen_not_started', { recordingState: interview.recordingState, agentState: interview.agentState });
+    return started;
   }
 
   async function startRealRecording(event, options = {}) {
@@ -5145,6 +5201,7 @@ main{width:100%;height:100%}
       setAgentState('arming');
       setVoiceStatus('Preparando escucha…', 'processing');
       console.log('[NOVA] recorder started', interview.mediaRecorder.mimeType);
+      novaTurnLog('recording_start', { mimeType: interview.mediaRecorder.mimeType });
 
       try {
         startVoiceActivityDetection(stream, lifecycle);
@@ -5245,6 +5302,7 @@ main{width:100%;height:100%}
       mimeType: blob.type,
       durationMs
     });
+    novaTurnLog('blob_ready', { bytes: blob.size, mimeType: blob.type, durationMs });
 
     if (currentStep !== 'step3') return;
 
@@ -5271,8 +5329,8 @@ main{width:100%;height:100%}
     }
 
     setInterviewBusy(true);
-    setAgentState('thinking');
-    setVoiceStatus('Nova está entendiendo tu respuesta…', 'processing');
+    setAgentState('processing');
+    setVoiceStatus('Respuesta capturada. Nova está preparando la siguiente pregunta…', 'processing');
 
     const queueItem = {
       id: crypto.randomUUID?.() || `voice-${Date.now()}`,
@@ -5282,7 +5340,7 @@ main{width:100%;height:100%}
       answersCount: interview.answersCount,
       usefulAnswersCount: interview.usefulAnswersCount,
       profile: { ...loadPriorProfile(), ...interview.profile },
-      conversationHistory: (interview.conversationHistory || []).slice(-10),
+      conversationHistory: (interview.conversationHistory || []).slice(-3),
       dimensionStatus: { ...interview.dimensionStatus },
       currentExample: interview.currentExample || '',
       durationMs,
@@ -5331,6 +5389,8 @@ main{width:100%;height:100%}
           setVoiceStatus('Se perdió la conexión. Guardamos tu audio para reintentarlo automáticamente.', 'ok');
         } else {
           setVoiceStatus(error.message || 'No pudimos procesar la respuesta. Inténtalo nuevamente.', 'error');
+          showNovaNotice('No pude procesar esa respuesta', 'Toca el micrófono para intentarlo otra vez.', 'error');
+          resetForRecording();
         }
       }
     } finally {
@@ -5433,6 +5493,7 @@ main{width:100%;height:100%}
         missingDimensions: result?.missing_dimensions || []
       });
       updateFinishButton();
+      setAgentState('ready_to_finish');
       setVoiceStatus('Perfil listo. Pulsa Finalizar para construir tu ruta.', 'ok');
       return;
     }
@@ -5484,12 +5545,14 @@ main{width:100%;height:100%}
       resolved: resolvedDimensionCount()
     });
 
-    const speech = await speakText(
+    novaTurnLog('tts_start', { source: 'next_question', dimension: nextDimension });
+    await speakText(
       composeNovaTurn(reaction, interview.currentQuestion, interview.currentExample),
       false
-    );
-    if (!speech.ok || currentStep !== 'step3') return;
-    await beginListeningTurn();
+    ).catch((error) => console.warn('[NOVA TTS] next_question_failed', error));
+    novaTurnLog('tts_end', { source: 'next_question', dimension: nextDimension });
+    if (currentStep !== 'step3') return;
+    await resumeListeningAfterSpeech('next_question');
   }
   async function receiveAIResult(result) {
     if (currentStep !== 'step3') return;

@@ -8,7 +8,7 @@ const MAX_AUDIO_BYTES = 8 * 1024 * 1024;
 const MAX_QUESTION_CHARS = 1000;
 const MAX_QUESTION_ID_CHARS = 100;
 const MAX_EXAMPLE_CHARS = 1500;
-const MAX_HISTORY_TURNS = 10;
+const MAX_HISTORY_TURNS = 3;
 const MAX_PROFILE_ITEMS = 30;
 const RATE_LIMIT_PER_MINUTE = 20;
 const MODEL = Deno.env.get("GEMINI_MODEL") || "gemini-3.8-flash";
@@ -331,50 +331,61 @@ async function callGeminiResilient(args: {
   audioBase64: string;
 }) {
   const attempts = [
-    { model: MODEL, delayMs: 0, label: "primary" },
-    { model: MODEL, delayMs: 650, label: "primary_retry" },
-    { model: FALLBACK_MODEL, delayMs: 900, label: "fallback" },
+    { model: MODEL, timeoutMs: 3500, label: "primary" },
+    { model: FALLBACK_MODEL, timeoutMs: 5500, label: "fallback" },
   ];
 
   let lastResponse: Response | null = null;
   let lastPayload: any = null;
 
   for (const attempt of attempts) {
-    if (attempt.delayMs) await sleep(attempt.delayMs);
-
     const endpoint =
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(attempt.model)}:generateContent?key=${encodeURIComponent(args.apiKey)}`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), attempt.timeoutMs);
 
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(geminiRequestBody(args.prompt, args.audioType, args.audioBase64)),
-    });
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(geminiRequestBody(args.prompt, args.audioType, args.audioBase64)),
+        signal: controller.signal,
+      });
 
-    const payload = await response.json();
-    lastResponse = response;
-    lastPayload = payload;
+      const payload = await response.json();
+      lastResponse = response;
+      lastPayload = payload;
 
-    if (response.ok) {
-      if (attempt.label !== "primary") {
-        console.log("Gemini recovery", JSON.stringify({
-          path: attempt.label,
-          model: attempt.model,
-          status: response.status,
-        }));
+      if (response.ok) {
+        if (attempt.label !== "primary") {
+          console.log("Gemini recovery", JSON.stringify({
+            path: attempt.label,
+            model: attempt.model,
+            status: response.status,
+          }));
+        }
+        return { response, payload, model: attempt.model, path: attempt.label };
       }
-      return { response, payload, model: attempt.model, path: attempt.label };
+
+      const retryable = [429, 500, 502, 503, 504].includes(response.status);
+      console.error("Gemini attempt failed", JSON.stringify({
+        path: attempt.label,
+        model: attempt.model,
+        status: response.status,
+        code: payload?.error?.status || payload?.error?.code || null,
+      }));
+
+      if (!retryable) break;
+    } catch (error) {
+      console.error("Gemini attempt failed", JSON.stringify({
+        path: attempt.label,
+        model: attempt.model,
+        status: "timeout_or_network",
+        code: error instanceof Error ? error.name : "UNKNOWN",
+      }));
+    } finally {
+      clearTimeout(timeout);
     }
-
-    const retryable = [429, 500, 502, 503, 504].includes(response.status);
-    console.error("Gemini attempt failed", JSON.stringify({
-      path: attempt.label,
-      model: attempt.model,
-      status: response.status,
-      code: payload?.error?.status || payload?.error?.code || null,
-    }));
-
-    if (!retryable) break;
   }
 
   return {
@@ -535,6 +546,7 @@ CONTROLES:
 - pause no completa la entrevista.
 - answer_sufficiency solo puede ser sufficient, partial o insufficient.
 - Si la respuesta es vaga, clarification_needed=true y haz una aclaración breve sobre la MISMA dimensión.
+- Para interests, mencionar al menos un área, tema o actividad concreta (por ejemplo "tecnología", "diseño", "negocios") ES suficiente: marca interests como covered y NO pidas aclaración adicional.
 - Si es insufficient, no extraigas datos nuevos.
 - profile_completeness entre 0 y 100.
 
@@ -628,6 +640,13 @@ Devuelve solo el JSON solicitado por el schema.
       : "";
     result.interview_complete = Boolean(result.interview_complete);
     result.should_finish = result.interview_complete;
+
+    if (result.turn_intent === "answer" && questionId === "interests" && result.interests.length > 0) {
+      result.answer_sufficiency = "sufficient";
+      result.clarification_needed = false;
+      if (!result.covered_dimensions.includes("interests")) result.covered_dimensions.push("interests");
+      if (result.next_dimension === "interests") result.next_dimension = "";
+    }
 
     if (result.answer_sufficiency === "insufficient") {
       for (const field of PROFILE_FIELDS) result[field] = [];
