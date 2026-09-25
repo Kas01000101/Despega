@@ -847,14 +847,14 @@
 
 /* Nova large and centered. */
 #step3View .nova-orb{
-  width:250px!important;
-  height:250px!important;
+  width:270px!important;
+  height:270px!important;
   margin:0 auto!important;
 }
 
 #step3View .nova-orb .agent-orb-core{
-  width:180px!important;
-  height:180px!important;
+  width:194px!important;
+  height:194px!important;
 }
 
 #step3View .nova-name{
@@ -1012,13 +1012,13 @@
   }
 
   #step3View .nova-orb{
-    width:220px!important;
-    height:220px!important;
+    width:235px!important;
+    height:235px!important;
   }
 
   #step3View .nova-orb .agent-orb-core{
-    width:158px!important;
-    height:158px!important;
+    width:168px!important;
+    height:168px!important;
   }
 
   #step3View .nova-name{
@@ -1047,13 +1047,13 @@
   }
 
   #step3View .nova-orb{
-    width:190px!important;
-    height:190px!important;
+    width:200px!important;
+    height:200px!important;
   }
 
   #step3View .nova-orb .agent-orb-core{
-    width:138px!important;
-    height:138px!important;
+    width:144px!important;
+    height:144px!important;
   }
 
   #step3View .nova-name{
