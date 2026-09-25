@@ -3333,8 +3333,8 @@ main{width:100%;height:100%}
   if (registerButton) {
     registerButton.addEventListener('click', (event) => {
       event.preventDefault();
-      initializeNovaAudio();
-      startNewInterviewSession();
+      // Registrarse debe navegar siempre. El audio y la sesión de Nova
+      // se inicializan únicamente al entrar a la entrevista (Paso 3).
       animateThen(registerButton, 'forward', () => goTo('step1'));
     });
   }
@@ -3505,13 +3505,16 @@ main{width:100%;height:100%}
   if (step2Form) {
     step2Form.addEventListener('submit', (event) => {
       event.preventDefault();
-      initializeNovaAudio();
 
       safeSave('despegaRegisterStep2', {
         educationLevel: $('#educationLevel')?.value || '',
         studyingNow: selectedSingle('studyingNow'),
         workingNow: selectedSingle('workingNow')
       });
+
+      // Crear una sesión limpia justo antes de comenzar la entrevista,
+      // conservando los datos capturados en Tus datos y Tu situación.
+      startNewInterviewSession();
 
       animateThen(event.submitter || step2Form.querySelector('.flow-primary'), 'forward', () => goTo('step3'));
     });
@@ -3826,12 +3829,14 @@ main{width:100%;height:100%}
       'despegaCurrentExample',
       'despegaAIProfile',
       'despegaConversationHistory',
-      'despegaRegisterStep1',
-      'despegaRegisterStep2',
       'despegaRegisterStep3'
     ];
-    keys.forEach((key) => localStorage.removeItem(key));
-    sessionStorage.removeItem('despegaAgentWelcomed');
+    try {
+      keys.forEach((key) => localStorage.removeItem(key));
+      sessionStorage.removeItem('despegaAgentWelcomed');
+    } catch (_) {
+      // El flujo debe continuar aunque el navegador restrinja Web Storage.
+    }
 
     interview.sessionId = sessionId;
     interview.answersCount = 0;
