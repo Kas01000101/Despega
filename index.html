@@ -3937,8 +3937,6 @@ main{width:100%;height:100%}
     console.log('[NOVA] cleanup complete');
   }
 
-  async function kokoroSpeak
-
   async function kokoroSpeak(text) {
     if (!DESPEGA_AI.kokoroTtsUrl) return false;
     const response = await fetch(DESPEGA_AI.kokoroTtsUrl, {
@@ -4138,8 +4136,6 @@ main{width:100%;height:100%}
     }
   }
 
-  async function startRealRecording
-
   async function startRealRecording(event) {
     event?.preventDefault();
     if (currentStep !== 'step3' || interview.isProcessing) return;
@@ -4248,8 +4244,6 @@ main{width:100%;height:100%}
     if (interview.recordingState === 'recording') stopRealRecording();
     else if (interview.recordingState === 'idle') startRealRecording(event);
   }
-
-  async function processRecordedAudio
 
   async function processRecordedAudio() {
     const recorder = interview.mediaRecorder;
