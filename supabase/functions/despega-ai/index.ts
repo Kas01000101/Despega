@@ -331,8 +331,8 @@ async function callGeminiResilient(args: {
   audioBase64: string;
 }) {
   const attempts = [
-    { model: MODEL, timeoutMs: 3500, label: "primary" },
-    { model: FALLBACK_MODEL, timeoutMs: 5500, label: "fallback" },
+    { model: FALLBACK_MODEL, timeoutMs: 4500, label: "primary_fast" },
+    { model: MODEL, timeoutMs: 4000, label: "fallback_quality" },
   ];
 
   let lastResponse: Response | null = null;
@@ -357,7 +357,7 @@ async function callGeminiResilient(args: {
       lastPayload = payload;
 
       if (response.ok) {
-        if (attempt.label !== "primary") {
+        if (attempt.label !== "primary_fast") {
           console.log("Gemini recovery", JSON.stringify({
             path: attempt.label,
             model: attempt.model,
