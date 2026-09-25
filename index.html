@@ -4524,17 +4524,60 @@ main{width:100%;height:100%}
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
       });
       const track = validateAudioTrack(stream);
-      track.addEventListener('ended', () => {
-        if (currentStep === 'step3' && interview.recordingState === 'recording') {
-          setVoiceStatus('El micrófono dejó de estar disponible. Vuelve a activarlo para continuar.', 'error');
-          stopRealRecording();
+      const micSettings = typeof track.getSettings === 'function' ? track.getSettings() : {};
+
+      const failActiveMicrophone = (message, reason) => {
+        if (currentStep !== 'step3') return;
+        novaVadDebug('microphone_failure', {
+          reason,
+          enabled: track.enabled,
+          muted: track.muted,
+          readyState: track.readyState
+        });
+        if (interview.recordingState === 'recording' || interview.recordingState === 'starting') {
+          cancelRecordingWithoutProcessing();
         }
+        setAgentState('error');
+        setVoiceStatus(message, 'error');
+        if (recordCaption) recordCaption.textContent = 'Revisa tu micrófono';
+        if (recordHelper) recordHelper.textContent = 'Cuando esté disponible, toca el micrófono para intentarlo de nuevo.';
+        if (recordAnswerButton) recordAnswerButton.disabled = false;
+      };
+
+      track.addEventListener('ended', () => {
+        failActiveMicrophone(
+          'El micrófono dejó de estar disponible. Vuelve a activarlo para continuar.',
+          'track_ended'
+        );
       }, { once: true });
+
+      track.addEventListener('mute', () => {
+        failActiveMicrophone(
+          'El navegador dejó de recibir audio del micrófono. Revisa el dispositivo e inténtalo nuevamente.',
+          'track_muted'
+        );
+      });
+
+      track.addEventListener('unmute', () => {
+        novaVadDebug('microphone_unmuted', {
+          enabled: track.enabled,
+          muted: track.muted,
+          readyState: track.readyState
+        });
+      });
+
       interview.mediaStream = stream;
       console.log('[NOVA] microphone granted', {
         enabled: track.enabled,
         muted: track.muted,
-        readyState: track.readyState
+        readyState: track.readyState,
+        settings: micSettings
+      });
+      novaVadDebug('microphone_ready', {
+        enabled: track.enabled,
+        muted: track.muted,
+        readyState: track.readyState,
+        settings: micSettings
       });
       return stream;
     } catch (error) {
@@ -5074,11 +5117,17 @@ main{width:100%;height:100%}
       return;
     }
 
-    if (!blob.size) {
+    if (!blob.size || blob.size < DESPEGA_AI.minAudioBytes) {
       setInterviewBusy(false);
       setAgentState('error');
       resetForRecording();
-      setVoiceStatus('La grabación no pudo generarse correctamente. Inténtalo otra vez.', 'error');
+      setVoiceStatus('La grabación no contiene audio suficiente. Revisa el micrófono e inténtalo otra vez.', 'error');
+      novaVadDebug('audio_too_small', {
+        bytes: blob.size,
+        minAudioBytes: DESPEGA_AI.minAudioBytes,
+        durationMs,
+        stopReason: interview.stopReason
+      });
       return;
     }
 
