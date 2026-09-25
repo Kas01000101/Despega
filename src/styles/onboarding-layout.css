@@ -609,3 +609,131 @@
     min-height: 160px !important;
   }
 }
+
+
+/* === PREVIEW VISUAL CORRECTION — CHARACTER-ONLY HERO + COMPACT EXAMPLE === */
+/*
+ * La ilustración del onboarding debe contener únicamente a los personajes.
+ * El título y subtítulo siguen siendo texto real generado por CSS.
+ */
+@media (min-width: 781px) {
+  #step2View .onboarding-art,
+  #step3View .onboarding-art {
+    width: min(80%, 620px) !important;
+    height: calc(100dvh - 224px) !important;
+    bottom: 0 !important;
+    object-fit: contain !important;
+    object-position: center bottom !important;
+    clip-path: none !important;
+    mix-blend-mode: normal !important;
+    filter: none !important;
+  }
+
+  /*
+   * Reproductor de ejemplo compacto:
+   * círculo de play + onda corta y fina.
+   * Sin título, "Voz" ni transcripción visible.
+   */
+  #step3View .agent-example-card {
+    justify-self: center !important;
+    display: grid !important;
+    grid-template-columns: 30px 92px !important;
+    align-items: center !important;
+    width: max-content !important;
+    min-width: 0 !important;
+    min-height: 34px !important;
+    gap: 7px !important;
+    padding: 3px 8px 3px 4px !important;
+    border-radius: 999px !important;
+    background: #fff1f7 !important;
+    box-shadow: none !important;
+  }
+
+  #step3View .agent-example-card .example-audio-title,
+  #step3View .agent-example-card .example-time,
+  #step3View .agent-example-card .example-quote {
+    display: none !important;
+  }
+
+  #step3View .agent-example-card .example-audio-meta {
+    display: block !important;
+    min-width: 0 !important;
+  }
+
+  #step3View .agent-example-card .play-example {
+    width: 30px !important;
+    height: 30px !important;
+    min-width: 30px !important;
+    min-height: 30px !important;
+    box-shadow: none !important;
+  }
+
+  #step3View .agent-example-card .play-example svg {
+    width: 13px !important;
+    height: 13px !important;
+  }
+
+  #step3View .agent-example-card .example-waveform {
+    width: 92px !important;
+    min-height: 12px !important;
+    height: 12px !important;
+    gap: 2px !important;
+    overflow: hidden !important;
+  }
+
+  #step3View .agent-example-card .example-waveform span {
+    width: 1.5px !important;
+    min-width: 1.5px !important;
+    height: 6px !important;
+    border-radius: 999px !important;
+  }
+
+  #step3View .agent-example-card .example-waveform span:nth-child(3n) {
+    height: 10px !important;
+  }
+
+  #step3View .agent-example-card .example-waveform span:nth-child(2n) {
+    height: 8px !important;
+  }
+
+  #step3View .agent-example-card.playing {
+    box-shadow: 0 5px 14px rgba(241, 38, 141, .10) !important;
+  }
+}
+
+@media (max-width: 780px) {
+  #step3View .agent-example-card {
+    justify-self: center !important;
+    display: grid !important;
+    grid-template-columns: 30px 84px !important;
+    width: max-content !important;
+    min-height: 34px !important;
+    gap: 7px !important;
+    padding: 3px 8px 3px 4px !important;
+    border-radius: 999px !important;
+  }
+
+  #step3View .agent-example-card .example-audio-title,
+  #step3View .agent-example-card .example-time,
+  #step3View .agent-example-card .example-quote {
+    display: none !important;
+  }
+
+  #step3View .agent-example-card .example-waveform {
+    width: 84px !important;
+    min-height: 12px !important;
+    height: 12px !important;
+    gap: 2px !important;
+  }
+
+  #step3View .agent-example-card .example-waveform span {
+    width: 1.5px !important;
+    height: 6px !important;
+  }
+
+  #step3View .agent-example-card .play-example {
+    width: 30px !important;
+    height: 30px !important;
+    box-shadow: none !important;
+  }
+}
