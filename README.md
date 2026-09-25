@@ -10,7 +10,8 @@ Despega+ es un prototipo web de orientación educativa y laboral para jóvenes. 
 - Paso 2 corregido para conservar proporciones consistentes entre ilustración y formulario.
 - Paso 3: Nova, agente conversacional por voz con memoria de corto plazo.
 - Comandos de Nova: repetir pregunta, repetir ejemplo, explicar, pausar y saltar.
-- Backend preparado como Supabase Edge Function `despega-ai`.
+- Backend desplegado en un proyecto Supabase exclusivo de DESPEGA (`ojmiuvlrffbojvofegad`).
+- Edge Function `despega-ai` con persistencia de sesiones, perfiles y turnos.
 - La `GEMINI_API_KEY` **no se almacena en el repositorio**.
 
 ## Arquitectura
@@ -20,7 +21,11 @@ Navegador
 ├─ index.html (frontend standalone)
 ├─ MediaRecorder
 ├─ memoria temporal / IndexedDB
-└─ Supabase Edge Function: despega-ai
+└─ Supabase DESPEGA
+      ├─ Edge Function: despega-ai
+      ├─ profiles
+      ├─ nova_sessions
+      ├─ nova_turns
       └─ Gemini
           ├─ intención conversacional
           ├─ comprensión del audio
@@ -60,6 +65,19 @@ Luego abre:
 ```text
 http://localhost:5500/
 ```
+
+## Supabase del MVP
+
+El MVP usa un proyecto Supabase separado de otros proyectos:
+
+- **Proyecto:** DESPEGA
+- **Project ref:** `ojmiuvlrffbojvofegad`
+- **Región:** `sa-east-1`
+- **Tablas:** `profiles`, `nova_sessions`, `nova_turns`
+- **RLS:** activado; el frontend no escribe directamente en las tablas.
+- **Edge Function:** `despega-ai`
+
+La Edge Function persiste los datos usando credenciales de servidor. El navegador solo utiliza la publishable key para invocar la función.
 
 ## Configurar Gemini
 
