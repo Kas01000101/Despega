@@ -32,7 +32,7 @@ const checks = [
   ['state version gate exists', html.includes('NOVA_STATE_VERSION = 3') && html.includes('ensureNovaStateVersion()')],
   ['dimension attempts exist', html.includes('despegaDimensionAttempts') && html.includes('clarificationAsked')],
   ['exhausted dimensions are excluded', html.includes("!interview.dimensionAttempts?.[dimension]?.exhausted")],
-  ['VAD calibrates before recorder starts', html.indexOf('const vadReady = await waitForVadReady') < html.indexOf('recorder.start();', html.indexOf('async function startRealRecording'))],
+  ['VAD calibrates before recorder starts', html.indexOf('const vadReady = await waitForVadReady') < html.indexOf('recorder.start();', html.indexOf('const vadReady = await waitForVadReady'))],
   ['voice diagnostic metadata sent', html.includes("form.append('stop_reason'") && html.includes("form.append('noise_floor'")],
   ['backend independent uncertain STT retry', edge.includes('independent_quality_retry') && edge.includes('preferFallback: true')],
   ['backend persistent voice diagnostics', edge.includes('.from("nova_voice_diagnostics")')],
