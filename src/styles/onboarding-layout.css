@@ -146,7 +146,7 @@
   #step3View .onboarding-copy {
     position: absolute;
     z-index: 4;
-    top: clamp(142px, 19dvh, 180px);
+    top: clamp(176px, 23dvh, 220px);
     left: 50%;
     width: min(88%, 700px);
     transform: translateX(-50%);
@@ -714,7 +714,7 @@
 
   #step2View .onboarding-copy,
   #step3View .onboarding-copy {
-    top: 102px !important;
+    top: 142px !important;
     width: min(86%, 640px) !important;
   }
 
@@ -933,7 +933,7 @@
 
   #step2View .onboarding-copy,
   #step3View .onboarding-copy {
-    top: 96px !important;
+    top: 124px !important;
     width: 88% !important;
   }
 
@@ -1277,7 +1277,7 @@
 
   #step2View .onboarding-copy,
   #step3View .onboarding-copy {
-    top: 74px !important;
+    top: 108px !important;
     width: 90% !important;
   }
 
@@ -1574,24 +1574,24 @@
 
 @media (min-width: 1200px) {
   #step3View .onboarding-copy {
-    top: clamp(150px, 20dvh, 184px) !important;
+    top: clamp(176px, 23dvh, 220px) !important;
   }
 }
 
 @media (min-width: 1200px) and (max-height: 800px) {
   #step3View .onboarding-copy {
-    top: 136px !important;
+    top: 142px !important;
   }
 }
 
 @media (min-width: 900px) and (max-width: 1199px) {
   #step3View .onboarding-copy {
-    top: 118px !important;
+    top: 124px !important;
   }
 }
 
 @media (min-width: 900px) and (max-width: 1100px) and (max-height: 700px) {
   #step3View .onboarding-copy {
-    top: 96px !important;
+    top: 108px !important;
   }
 }
