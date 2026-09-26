@@ -69,5 +69,13 @@
   function syncDashboardMode(){var active=!dashboardView.hidden;document.body.classList.toggle('dashboard-mode',active);if(active){if(!root.firstChild)shell();else renderAll();}}
   new MutationObserver(syncDashboardMode).observe(dashboardView,{attributes:true,attributeFilter:['hidden']});
   document.addEventListener('keydown',function(e){if(e.key==='Escape'){toggleNova(false);closeModal();}});
+  window.DESPEGA_DASHBOARD_API=Object.freeze({
+    navigate:setView,
+    getCurrentView:function(){return state.view;},
+    getCatalog:function(){return catalog.map(function(item){return Object.assign({},item);});},
+    getOpportunity:function(id){var item=catalog.find(function(row){return row.id===id;});return item?Object.assign({},item):null;},
+    getSavedIds:function(){return state.saved.slice();},
+    getViewedIds:function(){return state.viewed.slice();}
+  });
   shell();syncDashboardMode();
 })();

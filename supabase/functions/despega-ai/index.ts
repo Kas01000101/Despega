@@ -12,6 +12,9 @@ const MAX_HISTORY_TURNS = 2;
 const MAX_PROFILE_ITEMS = 30;
 const MAX_BARRIER_DETAILS = 12;
 const RATE_LIMIT_PER_MINUTE = 30;
+const CHAT_RATE_LIMIT_PER_MINUTE = 20;
+const MAX_CHAT_MESSAGE_CHARS = 1600;
+const MAX_CHAT_HISTORY_TURNS = 12;
 const MODEL = Deno.env.get("GEMINI_MODEL") || "gemini-3.8-flash";
 const FALLBACK_MODEL = Deno.env.get("GEMINI_FALLBACK_MODEL") || "gemini-3.5-flash-lite";
 const GEMINI_TIMEOUTS = Object.freeze({
@@ -76,6 +79,7 @@ const QUESTION_MAP: Record<string, { question: string; example: string }> = {
   },
 };
 const rateBuckets = new Map<string, { count: number; resetAt: number }>();
+const chatRateBuckets = new Map<string, { count: number; resetAt: number }>();
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
 const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
@@ -343,6 +347,19 @@ function allowRequest(key: string) {
   return true;
 }
 
+function allowChatRequest(key: string) {
+  const now = Date.now();
+  const safeKey = key || "anonymous";
+  const bucket = chatRateBuckets.get(safeKey);
+  if (!bucket || bucket.resetAt <= now) {
+    chatRateBuckets.set(safeKey, { count: 1, resetAt: now + 60_000 });
+    return true;
+  }
+  if (bucket.count >= CHAT_RATE_LIMIT_PER_MINUTE) return false;
+  bucket.count += 1;
+  return true;
+}
+
 const transcriptionSchema = {
   type: "OBJECT",
   properties: {
@@ -415,6 +432,131 @@ const analysisSchema = {
     "follow_up_strategy", "profile_completeness", "should_finish", "final_message", "memory_summary",
   ],
 };
+
+
+const CHAT_ALLOWED_VIEWS = new Set(["home", "route", "opportunities", "progress", "profile"]);
+const CHAT_ALLOWED_ACTIONS = new Set(["navigate"]);
+const chatSchema = {
+  type: "OBJECT",
+  properties: {
+    reply: { type: "STRING" },
+    actions: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          type: { type: "STRING" },
+          target: { type: "STRING" },
+          label: { type: "STRING" },
+        },
+        required: ["type", "target", "label"],
+      },
+    },
+    referenced_opportunity_ids: { type: "ARRAY", items: { type: "STRING" } },
+    conversation_summary: { type: "STRING" },
+  },
+  required: ["reply", "actions", "referenced_opportunity_ids", "conversation_summary"],
+};
+
+function sanitizeChatHistory(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(-MAX_CHAT_HISTORY_TURNS).map((entry) => {
+    const row = entry && typeof entry === "object" ? entry as Record<string, unknown> : {};
+    return {
+      role: String(row.role || "") === "assistant" ? "assistant" : "user",
+      content: text(row.content, MAX_CHAT_MESSAGE_CHARS),
+    };
+  }).filter((row) => row.content);
+}
+
+function sanitizeChatActions(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  const result: Array<{ type: string; target: string; label: string }> = [];
+  for (const item of value.slice(0, 4)) {
+    const row = item && typeof item === "object" ? item as Record<string, unknown> : {};
+    const type = text(row.type, 40);
+    const target = text(row.target, 40);
+    const label = text(row.label, 80);
+    if (!CHAT_ALLOWED_ACTIONS.has(type) || !CHAT_ALLOWED_VIEWS.has(target) || !label) continue;
+    result.push({ type, target, label });
+  }
+  return result;
+}
+
+async function findExistingChatReply(chatSessionId: string, messageId: string) {
+  if (!supabaseAdmin) return null;
+  const { data, error } = await supabaseAdmin
+    .from("nova_chat_messages")
+    .select("content,model,latency_ms")
+    .eq("chat_session_id", chatSessionId)
+    .eq("role", "assistant")
+    .eq("reply_to_message_id", messageId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+async function persistChatExchange(args: {
+  onboardingSessionId: string;
+  chatSessionId: string;
+  messageId: string;
+  currentView: string;
+  userMessage: string;
+  assistantReply: string;
+  model: string;
+  latencyMs: number;
+  conversationSummary: string;
+}) {
+  if (!supabaseAdmin) return;
+  const now = new Date().toISOString();
+  const { error: sessionError } = await supabaseAdmin
+    .from("nova_chat_sessions")
+    .upsert({
+      id: args.chatSessionId,
+      onboarding_session_id: args.onboardingSessionId,
+      summary: text(args.conversationSummary, 2000),
+      updated_at: now,
+    }, { onConflict: "id" });
+  if (sessionError) throw sessionError;
+
+  const assistantMessageId = crypto.randomUUID();
+  const { error: messageError } = await supabaseAdmin
+    .from("nova_chat_messages")
+    .insert([
+      {
+        chat_session_id: args.chatSessionId,
+        message_id: args.messageId,
+        role: "user",
+        content: text(args.userMessage, MAX_CHAT_MESSAGE_CHARS),
+        current_view: args.currentView,
+      },
+      {
+        chat_session_id: args.chatSessionId,
+        message_id: assistantMessageId,
+        role: "assistant",
+        content: text(args.assistantReply, 4000),
+        current_view: args.currentView,
+        reply_to_message_id: args.messageId,
+        model: args.model,
+        latency_ms: args.latencyMs,
+      },
+    ]);
+  if (messageError && String(messageError.code || "") !== "23505") throw messageError;
+
+  await supabaseAdmin.from("nova_chat_diagnostics").upsert({
+    chat_session_id: args.chatSessionId,
+    message_id: args.messageId,
+    current_view: args.currentView,
+    input_length: args.userMessage.length,
+    output_length: args.assistantReply.length,
+    model: args.model,
+    latency_ms: args.latencyMs,
+    status: "ok",
+    error_code: "",
+  }, { onConflict: "chat_session_id,message_id" });
+}
 
 async function persistTurn(args: {
   sessionId: string;
@@ -819,12 +961,12 @@ Deno.serve(async (req: Request) => {
 
     const form = await req.formData();
     const modeRaw = text(form.get("mode"), 32).toLowerCase();
-    const mode = modeRaw === "transcribe" || modeRaw === "analyze" ? modeRaw : "full";
+    const mode = modeRaw === "transcribe" || modeRaw === "analyze" || modeRaw === "chat" ? modeRaw : "full";
     const transcriptOverride = text(form.get("transcript_override"), 3000);
     const audioEntry = form.get("audio");
     const audio = audioEntry instanceof File ? audioEntry : null;
 
-    if (mode !== "analyze" && !audio) {
+    if (mode !== "analyze" && mode !== "chat" && !audio) {
       return json({ error: "AUDIO_REQUIRED" }, 400, origin);
     }
     if (audio && !audio.type.startsWith("audio/")) {
@@ -841,6 +983,145 @@ Deno.serve(async (req: Request) => {
     if (!sessionId) {
       return json({ error: "SESSION_ID_REQUIRED" }, 400, origin);
     }
+    if (mode === "chat") {
+      const chatSessionId = text(form.get("chat_session_id"), 120);
+      const messageId = text(form.get("message_id"), 160);
+      const currentViewRaw = text(form.get("current_view"), 40);
+      const currentView = CHAT_ALLOWED_VIEWS.has(currentViewRaw) ? currentViewRaw : "home";
+      const message = text(form.get("message"), MAX_CHAT_MESSAGE_CHARS);
+      const chatContext = parseJsonObject(form.get("context")) || {};
+      let chatHistory: unknown[] = [];
+      try { chatHistory = sanitizeChatHistory(JSON.parse(String(form.get("chat_history") || "[]"))); } catch {}
+
+      if (!chatSessionId || !messageId || !message) {
+        return json({ error: "CHAT_INPUT_REQUIRED", phase: "chat" }, 400, origin);
+      }
+      if (!allowChatRequest(chatSessionId)) {
+        return json({
+          error: "RATE_LIMITED",
+          message: "Has enviado varios mensajes seguidos. Espera un momento y vuelve a intentarlo.",
+          phase: "chat",
+        }, 429, origin);
+      }
+
+      const existing = await findExistingChatReply(chatSessionId, messageId);
+      if (existing?.content) {
+        return json({
+          reply: text(existing.content, 4000),
+          actions: [],
+          referenced_opportunity_ids: [],
+          duplicate: true,
+          model: text(existing.model, 120),
+          latency_ms: Number(existing.latency_ms || 0),
+        }, 200, origin);
+      }
+
+      const availableOpportunityIds = new Set(
+        Array.isArray((chatContext as any).opportunities)
+          ? (chatContext as any).opportunities.map((item: any) => text(item?.id, 120)).filter(Boolean)
+          : []
+      );
+
+      const chatPrompt = \`
+Eres Nova, asistente de orientación de DESPEGA.
+
+OBJETIVO:
+Ayuda a la persona a comprender información que YA existe en su perfil, ruta y catálogo. Conversa de manera breve, clara y cercana.
+
+REGLAS OBLIGATORIAS:
+- No decides por la persona y no presentes una opción como "la mejor".
+- No inventes becas, empleos, convocatorias, fechas, costos, requisitos, instituciones ni atributos del perfil.
+- Usa únicamente CONTEXTO y CATÁLOGO incluidos en esta solicitud.
+- Si falta un dato, di que no está registrado o disponible.
+- HABILIDAD = algo que la persona sabe hacer o siente que hace bien.
+- EXPERIENCIA = algo que la persona ya hizo en un contexto real.
+- No conviertas automáticamente experiencia en habilidad.
+- Una conversación normal NO modifica profile, skills, experience, goals ni barriers.
+- Si comparas opciones, limita la comparación a campos existentes: modalidad, duración, costo, nivel, fuente y descripción.
+- Si sugieres navegación, usa solo: home, route, opportunities, progress, profile.
+- No generes URLs.
+- Máximo 2 párrafos breves o 6 viñetas.
+- Responde en español.
+
+VISTA ACTUAL: \${currentView}
+CONTEXTO CONTROLADO:
+\${JSON.stringify(chatContext)}
+HISTORIAL RECIENTE:
+\${JSON.stringify(chatHistory)}
+MENSAJE DEL USUARIO:
+\${message}
+
+Devuelve solo el JSON del schema.
+\`;
+
+      const chatStartedAt = performance.now();
+      const gemini = await callGeminiResilient({
+        apiKey: geminiKey,
+        prompt: chatPrompt,
+        responseSchema: chatSchema,
+        temperature: 0.2,
+        phase: "analysis",
+      });
+      const latencyMs = Math.round(performance.now() - chatStartedAt);
+      if (!gemini.response?.ok) {
+        await supabaseAdmin?.from("nova_chat_diagnostics").upsert({
+          chat_session_id: chatSessionId,
+          message_id: messageId,
+          current_view: currentView,
+          input_length: message.length,
+          output_length: 0,
+          model: String(gemini.model || ""),
+          latency_ms: latencyMs,
+          status: "error",
+          error_code: "CHAT_MODEL_UNAVAILABLE",
+        }, { onConflict: "chat_session_id,message_id" });
+        return json({
+          error: "CHAT_MODEL_UNAVAILABLE",
+          message: "No pude responder en este momento. Tu perfil y tu ruta siguen guardados.",
+          retryable: true,
+          phase: "chat",
+        }, 503, origin);
+      }
+
+      const output = gemini.payload?.candidates?.[0]?.content?.parts
+        ?.map((part: any) => part?.text || "")
+        .join("")
+        .trim() || "";
+      let parsed: Record<string, any>;
+      try { parsed = JSON.parse(output); }
+      catch {
+        return json({ error: "INVALID_MODEL_RESPONSE", phase: "chat", retryable: true }, 502, origin);
+      }
+
+      const reply = text(parsed.reply, 4000);
+      if (!reply) return json({ error: "EMPTY_CHAT_REPLY", phase: "chat", retryable: true }, 502, origin);
+      const actions = sanitizeChatActions(parsed.actions);
+      const referencedOpportunityIds = stringArray(parsed.referenced_opportunity_ids, 8)
+        .filter((id) => availableOpportunityIds.has(id));
+      const conversationSummary = text(parsed.conversation_summary, 2000);
+
+      await persistChatExchange({
+        onboardingSessionId: sessionId,
+        chatSessionId,
+        messageId,
+        currentView,
+        userMessage: message,
+        assistantReply: reply,
+        model: String(gemini.model || ""),
+        latencyMs,
+        conversationSummary,
+      });
+
+      return json({
+        reply,
+        actions,
+        referenced_opportunity_ids: referencedOpportunityIds,
+        model: String(gemini.model || ""),
+        latency_ms: latencyMs,
+        phase: "chat",
+      }, 200, origin);
+    }
+
     if (!allowRequest(sessionId)) {
       return json({
         error: "RATE_LIMITED",
