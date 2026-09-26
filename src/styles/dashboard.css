@@ -383,3 +383,12 @@ linear-gradient(135deg,#102f72 0%,#214ea7 100%)}
   .dd-youth-svg,.dd-orbit,.nova-fab.is-idle,.nova-fab.is-thinking .nova-status-ring{animation:none!important}
   .dd-motion-card{opacity:1!important;transform:none!important}
 }
+
+.nova-chat-identity{display:flex;align-items:center;gap:10px}
+.nova-chat-identity>div{display:grid;gap:1px}
+.nova-chat-identity small{font-size:10px;color:#67789a;font-weight:600}
+.nova-chat-avatar{width:34px;height:34px;border-radius:50%;background:linear-gradient(145deg,#192a6b,#7357E8);position:relative;display:block;box-shadow:0 5px 14px rgba(73,56,165,.18)}
+.nova-chat-avatar i{position:absolute;top:10px;width:4px;height:6px;border-radius:50%;background:#fff}.nova-chat-avatar i:first-child{left:9px}.nova-chat-avatar i:nth-child(2){right:9px}
+.nova-chat-avatar b{position:absolute;left:9px;right:9px;bottom:8px;height:7px;border:2px solid #fff;border-top:0;border-radius:0 0 12px 12px}
+.nova-fab[data-nova-hint]::after{content:attr(data-nova-hint);position:absolute;right:70px;bottom:2px;width:210px;padding:10px 12px;border-radius:14px;background:#fff;color:var(--dd-navy);font-size:11px;font-weight:700;line-height:1.35;text-align:left;box-shadow:0 12px 35px rgba(15,43,104,.16);border:1px solid var(--dd-border);animation:novaHintIn .22s ease both}
+@keyframes novaHintIn{from{opacity:0;transform:translateX(8px)}to{opacity:1;transform:none}}
