@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#FFFDF8">
-  <meta name="description" content="DESPEGA+ — flujo secuencial con entrevista adaptativa de voz e IA">
-  <title>🚀 Despega+</title>
+  <meta name="description" content="DESPEGA — flujo secuencial con entrevista adaptativa de voz e IA">
+  <title>🚀 DESPEGA</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -2173,7 +2173,7 @@ main{width:100%;height:100%}
 
 
 /* ============================================================
-   DESPEGA+ V11 — AGENTE CONVERSACIONAL DE VOZ
+   DESPEGA V11 — AGENTE CONVERSACIONAL DE VOZ
    MediaRecorder + Gemini proxy + IndexedDB + TTS provider
    ============================================================ */
 .ai-architecture-badge{
@@ -2252,7 +2252,7 @@ main{width:100%;height:100%}
 
 
 /* ============================================================
-   DESPEGA+ V11 — AGENTE DE VOZ ANIMADO
+   DESPEGA V11 — AGENTE DE VOZ ANIMADO
    Inspirado en el principio de loaders circulares: SVG/CSS puro,
    con estados visuales idle / speaking / listening / thinking.
    ============================================================ */
@@ -2296,7 +2296,7 @@ main{width:100%;height:100%}
 
 
 /* ============================================================
-   DESPEGA+ V12 — NOVA, AGENTE EMOCIONAL + FLUJO AUTOMÁTICO
+   DESPEGA V12 — NOVA, AGENTE EMOCIONAL + FLUJO AUTOMÁTICO
    ============================================================ */
 .agent-step3-card{padding:18px 22px 14px;gap:10px}
 .agent-meta-row{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:26px}
@@ -2461,6 +2461,260 @@ main{width:100%;height:100%}
   #step2View .step2-card .flow-primary{height:35px}
 }
 
+
+/* ============================================================
+   PLAN 4 — NOVA + RESUMEN + DASHBOARD
+   ============================================================ */
+.nova-conversation-card{
+  min-height:min(690px,calc(100dvh - 82px));
+  max-height:calc(100dvh - 64px);
+  overflow:hidden;
+}
+.nova-conversation-stage{
+  flex:1 1 auto;
+  min-height:0;
+  display:grid;
+  grid-template-rows:auto minmax(230px,1fr) minmax(92px,auto);
+  align-items:stretch;
+}
+.nova-question-inline{align-self:start}
+.nova-orb-zone{
+  align-self:center;
+  justify-self:center;
+  min-height:230px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+}
+.nova-context-panel{
+  min-height:92px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  position:relative;
+}
+.nova-context-panel > *{
+  width:min(520px,100%);
+  margin-inline:auto;
+}
+.nova-notice,
+.nova-mic-panel,
+.nova-confirmation{
+  position:relative;
+  inset:auto;
+}
+.nova-actions{
+  margin-top:auto;
+  display:flex;
+  justify-content:flex-end;
+  align-items:center;
+  min-height:52px;
+}
+.nova-finish-button{margin-left:auto}
+
+.analysis-view{
+  grid-template-columns:minmax(0,47%) minmax(0,53%);
+  overflow:hidden;
+}
+.analysis-hero-panel{
+  padding:52px 24px 18px;
+  min-width:0;
+  min-height:0;
+}
+.analysis-hero-copy{width:min(560px,90%)}
+.analysis-hero-copy h1{
+  font-size:clamp(38px,3.35vw,54px);
+  line-height:1.02;
+  letter-spacing:-1.7px;
+}
+.analysis-hero-copy p{
+  margin-top:12px;
+  max-width:500px;
+  font-size:15px;
+  line-height:1.42;
+}
+.analysis-characters{
+  width:min(560px,82%);
+  max-height:46%;
+  bottom:18px;
+  border-radius:0;
+  object-fit:contain;
+}
+.analysis-panel{
+  min-width:0;
+  padding:48px 30px 22px 16px;
+}
+.analysis-card{
+  width:min(650px,100%);
+  max-height:calc(100dvh - 72px);
+  padding:24px 28px 22px;
+  gap:13px;
+  overflow:hidden;
+}
+.analysis-heading h2{font-size:clamp(30px,2.55vw,40px)}
+.analysis-heading p{font-size:14px}
+.analysis-stage{min-height:60px}
+.analysis-stage-copy strong{font-size:14px}
+.analysis-stage-copy span{font-size:11.8px}
+.analysis-note{padding:12px 16px;grid-template-columns:52px minmax(0,1fr);gap:12px}
+.analysis-note-icon{width:46px;height:46px}
+.analysis-note-icon svg{width:38px;height:38px}
+
+/* El resumen se adapta antes de permitir overflow horizontal. */
+@media (max-width:980px){
+  .analysis-view{grid-template-columns:1fr;overflow:auto}
+  .analysis-hero-panel{min-height:52dvh;padding:36px 20px 12px}
+  .analysis-characters{position:relative;left:auto;bottom:auto;transform:none;margin:24px auto 0;width:min(520px,78%);max-height:30dvh}
+  .analysis-panel{padding:12px 18px 28px}
+  .analysis-card{max-height:none}
+}
+
+/* Dashboard */
+.dashboard-view{
+  width:100%;
+  min-height:100dvh;
+  background:#FFFDF8;
+  color:var(--navy-900);
+  overflow:auto;
+}
+.dashboard-header{
+  min-height:72px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:20px;
+  padding:14px clamp(22px,5vw,72px);
+  border-bottom:1px solid #E9EDF4;
+  background:rgba(255,253,248,.96);
+  position:sticky;
+  top:0;
+  z-index:20;
+}
+.dashboard-brand{
+  font-size:22px;
+  font-weight:800;
+  letter-spacing:-.6px;
+}
+.dashboard-account{
+  display:flex;
+  align-items:center;
+  gap:9px;
+  font-size:13px;
+  font-weight:600;
+}
+.dashboard-account-dot{
+  width:10px;height:10px;border-radius:50%;background:var(--pink-500);
+  box-shadow:0 0 0 4px rgba(216,58,141,.10);
+}
+.dashboard-shell{
+  width:min(1180px,calc(100% - 44px));
+  margin:0 auto;
+  padding:42px 0 56px;
+}
+.dashboard-welcome{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:26px;
+  margin-bottom:28px;
+}
+.dashboard-eyebrow,.dashboard-card-kicker{
+  display:block;
+  color:var(--pink-500);
+  font-size:12px;
+  font-weight:800;
+  letter-spacing:.08em;
+}
+.dashboard-welcome h1{
+  margin:6px 0 8px;
+  font-size:clamp(34px,4vw,54px);
+  line-height:1.03;
+  letter-spacing:-1.7px;
+}
+.dashboard-welcome p{
+  margin:0;
+  max-width:720px;
+  color:var(--text-secondary);
+  font-size:15px;
+  line-height:1.55;
+}
+.dashboard-status-pill{
+  flex:0 0 auto;
+  padding:10px 16px;
+  border-radius:999px;
+  background:#E9F8F1;
+  color:#26775A;
+  font-size:12px;
+  font-weight:700;
+}
+.dashboard-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:18px;
+}
+.dashboard-card{
+  min-height:210px;
+  padding:26px;
+  border:1px solid #E8EDF4;
+  border-radius:24px;
+  background:#fff;
+  box-shadow:0 12px 34px rgba(15,43,104,.055);
+}
+.dashboard-card-primary{
+  background:linear-gradient(135deg,#132E6C,#1C4A98);
+  color:#fff;
+  border-color:transparent;
+}
+.dashboard-card-primary .dashboard-card-kicker{color:#FFD4E9}
+.dashboard-card h2{
+  margin:7px 0 10px;
+  font-size:24px;
+  line-height:1.18;
+  letter-spacing:-.5px;
+}
+.dashboard-card p{
+  margin:0;
+  color:#6C7892;
+  font-size:13.5px;
+  line-height:1.55;
+}
+.dashboard-card-primary p{color:rgba(255,255,255,.82)}
+.dashboard-action{
+  margin-top:20px;
+  border:0;
+  border-radius:13px;
+  padding:12px 18px;
+  background:#fff;
+  color:var(--navy-900);
+  font-weight:700;
+}
+.dashboard-chips{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-top:14px;
+}
+.dashboard-chip{
+  max-width:100%;
+  padding:8px 11px;
+  border-radius:999px;
+  background:#FFF1F8;
+  color:var(--navy-900);
+  font-size:12px;
+  font-weight:600;
+}
+.dashboard-chip-empty{
+  color:var(--text-secondary);
+  font-size:13px;
+}
+@media(max-width:780px){
+  .nova-conversation-card{min-height:680px;max-height:none}
+  .dashboard-shell{width:min(100% - 28px,1180px);padding-top:26px}
+  .dashboard-welcome{flex-direction:column}
+  .dashboard-grid{grid-template-columns:1fr}
+}
+
 </style>
   <link rel="stylesheet" href="./src/styles/nova-avatar.css">
   <link rel="stylesheet" href="./src/styles/onboarding-layout.css">
@@ -2468,7 +2722,7 @@ main{width:100%;height:100%}
 </head>
 <body>
 <!--
-  DESPEGA+ · V11 AGENTE DE VOZ · clic para grabar + Gemini + Kokoro/Browser TTS
+  DESPEGA · V11 AGENTE DE VOZ · clic para grabar + Gemini + Kokoro/Browser TTS
   Login → Regístrate → Paso 1 → Paso 2 → Paso 3 → Análisis
   No usa páginas HTML adicionales.
 -->
@@ -2941,7 +3195,7 @@ main{width:100%;height:100%}
 
         <div class="analysis-hero-copy">
           <h1 id="analysisHeroTitle">Estamos<br>construyendo tu ruta</h1>
-          <p>Analizamos tu información para recomendarte oportunidades personalizadas.</p>
+          <p>Estamos preparando tu perfil para mostrarte opciones y próximos pasos.</p>
         </div>
 
         <img
@@ -2955,7 +3209,7 @@ main{width:100%;height:100%}
         <div class="card analysis-card">
           <div class="analysis-heading">
             <h2 id="analysisTitle">La IA está analizando tu perfil</h2>
-            <p>Estamos revisando tu información para conocerte mejor y recomendarte oportunidades que se ajusten a ti.</p>
+            <p>Estamos organizando lo que nos contaste para preparar tu perfil y tus próximos pasos.</p>
           </div>
 
           <div class="analysis-progress-row" aria-label="Progreso del análisis">
@@ -2998,7 +3252,7 @@ main{width:100%;height:100%}
               <span class="analysis-stage-dot" aria-hidden="true"></span>
               <div class="analysis-stage-copy">
                 <strong>Generando resultados</strong>
-                <span>Nuestra IA está preparando tus recomendaciones personalizadas.</span>
+                <span>Estamos preparando opciones para que puedas explorarlas.</span>
               </div>
             </li>
 
@@ -3022,11 +3276,60 @@ main{width:100%;height:100%}
               </svg>
             </span>
             <div>              <strong>Este proceso puede tardar solo unos segundos</strong>
-              <p>Estamos utilizando inteligencia artificial para preparar recomendaciones que se ajusten a tu perfil.</p>
+              <p>Estamos organizando tu información para preparar una ruta clara y fácil de revisar.</p>
             </div>
           </div>
         </div>
       </section>
+    </section>
+
+    <!-- DASHBOARD / RUTA -->
+    <section id="dashboardView" class="dashboard-view" data-view="dashboard" hidden>
+      <header class="dashboard-header">
+        <div class="dashboard-brand">DESPEGA</div>
+        <div class="dashboard-account">
+          <span class="dashboard-account-dot" aria-hidden="true"></span>
+          <span id="dashboardAccountName">Tu cuenta</span>
+        </div>
+      </header>
+
+      <main class="dashboard-shell" aria-labelledby="dashboardTitle">
+        <section class="dashboard-welcome">
+          <div>
+            <span class="dashboard-eyebrow">TU RUTA</span>
+            <h1 id="dashboardTitle">Hola, <span id="dashboardFirstName">bienvenido</span></h1>
+            <p>Tu perfil ya está listo. Aquí puedes revisar lo que nos contaste y continuar desde un solo lugar.</p>
+          </div>
+          <div class="dashboard-status-pill">Perfil listo</div>
+        </section>
+
+        <section class="dashboard-grid">
+          <article class="dashboard-card dashboard-card-primary">
+            <span class="dashboard-card-kicker">Siguiente paso</span>
+            <h2>Explora opciones relacionadas con tus intereses</h2>
+            <p>DESPEGA te mostrará alternativas para que compares requisitos, duración y próximos pasos antes de elegir.</p>
+            <button id="dashboardExploreButton" class="dashboard-action" type="button">Explorar opciones</button>
+          </article>
+
+          <article class="dashboard-card">
+            <span class="dashboard-card-kicker">Tu situación</span>
+            <h2 id="dashboardEducation">Información educativa</h2>
+            <p id="dashboardSituation">Tu información del onboarding aparecerá aquí.</p>
+          </article>
+
+          <article class="dashboard-card">
+            <span class="dashboard-card-kicker">Lo que le contaste a Nova</span>
+            <h2>Intereses y fortalezas</h2>
+            <div id="dashboardProfileChips" class="dashboard-chips"></div>
+          </article>
+
+          <article class="dashboard-card">
+            <span class="dashboard-card-kicker">Tu progreso</span>
+            <h2>Onboarding completado</h2>
+            <p id="dashboardProgressText">Tus respuestas quedaron guardadas para esta sesión.</p>
+          </article>
+        </section>
+      </main>
     </section>
 
   </main>
@@ -3063,7 +3366,7 @@ main{width:100%;height:100%}
   }
 
   // ============================================================
-  // DESPEGA+ AI CONFIG
+  // DESPEGA AI CONFIG
   // La publishable key de Supabase es pública por diseño.
   // NUNCA coloques GEMINI_API_KEY aquí: vive como secreto del backend.
   // ============================================================
@@ -3107,20 +3410,23 @@ main{width:100%;height:100%}
     step1: $('#registerView'),
     step2: $('#step2View'),
     step3: $('#step3View'),
-    analysis: $('#analysisView')
+    analysis: $('#analysisView'),
+    dashboard: $('#dashboardView')
   };
 
   const pageTitles = {
-    login: '🚀 Despega+',
-    step1: '🚀 Despega+',
-    step2: '🚀 Despega+',
-    step3: '🚀 Despega+',
-    analysis: '🚀 Despega+'
+    login: '🚀 DESPEGA',
+    step1: '🚀 DESPEGA',
+    step2: '🚀 DESPEGA',
+    step3: '🚀 DESPEGA',
+    analysis: '🚀 DESPEGA',
+    dashboard: 'DESPEGA · Mi ruta'
   };
 
   let currentStep = 'login';
   let toastTimer = null;
   let analysisTimer = null;
+  let analysisRunId = 0;
   let exampleTimeout = null;
   let exampleInterval = null;
   let recordInterval = null;
@@ -3148,34 +3454,145 @@ main{width:100%;height:100%}
     });
   }
 
+  function setAnalysisProgress(progress){
+    const safe = Math.max(0, Math.min(100, Number(progress) || 0));
+    const bar = $('#analysisProgressBar');
+    const percent = $('#analysisPercent');
+    if (bar) bar.style.width = safe + '%';
+    if (percent) percent.textContent = safe + '%';
+    setAnalysisStage(safe);
+  }
+
   function stopAnalysisLoading(){
-    clearInterval(analysisTimer);
+    analysisRunId += 1;
+    clearTimeout(analysisTimer);
     analysisTimer = null;
   }
 
-  function startAnalysisLoading(){
-    stopAnalysisLoading();
-    const bar = $('#analysisProgressBar');
-    const percent = $('#analysisPercent');
-    let progress = 0;
+  function readJsonStorage(key, fallback = {}) {
+    try {
+      const value = JSON.parse(localStorage.getItem(key) || '');
+      return value && typeof value === 'object' ? value : fallback;
+    } catch {
+      return fallback;
+    }
+  }
 
-    if (bar) bar.style.width = '0%';
-    if (percent) percent.textContent = '0%';
-    setAnalysisStage(0);
+  function buildDashboardModel(snapshot = {}) {
+    const basic = snapshot.step1 || {};
+    const situation = snapshot.step2 || {};
+    const profile = snapshot.step3?.profile || {};
+    const evidence = [];
 
-    analysisTimer = setInterval(() => {
-      progress += progress < 78 ? 4 : 2;
-      if (progress > 100) progress = 100;
-
-      if (bar) bar.style.width = progress + '%';
-      if (percent) percent.textContent = progress + '%';
-      setAnalysisStage(progress);
-
-      if (progress >= 100) {
-        stopAnalysisLoading();
-        showToast('Perfil listo. Te recomiendo revisar primero tu siguiente paso.');
+    const pushEvidence = (items) => {
+      for (const item of (Array.isArray(items) ? items : [])) {
+        const value = insightText(item);
+        if (!value) continue;
+        const compact = value.replace(/[.;]+$/g, '').trim();
+        if (!compact || evidence.some(v => v.toLowerCase() === compact.toLowerCase())) continue;
+        evidence.push(compact);
+        if (evidence.length >= 6) return;
       }
-    }, 120);
+    };
+
+    pushEvidence(profile.interests);
+    pushEvidence(profile.skills);
+    pushEvidence(profile.goals);
+
+    return {
+      firstName: String(basic.firstName || '').trim().split(/\s+/)[0] || 'bienvenido',
+      fullName: [basic.firstName, basic.lastName].filter(Boolean).join(' ').trim() || 'Tu cuenta',
+      education: String(situation.educationLevel || 'Nivel educativo por completar'),
+      studyingNow: String(situation.studyingNow || ''),
+      workingNow: String(situation.workingNow || ''),
+      evidence,
+      answersCount: Number(snapshot.step3?.answersCount || 0)
+    };
+  }
+
+  function renderDashboard(model = {}) {
+    if ($('#dashboardFirstName')) $('#dashboardFirstName').textContent = model.firstName || 'bienvenido';
+    if ($('#dashboardAccountName')) $('#dashboardAccountName').textContent = model.fullName || 'Tu cuenta';
+    if ($('#dashboardEducation')) $('#dashboardEducation').textContent = model.education || 'Tu situación';
+
+    const situationParts = [];
+    if (model.studyingNow) situationParts.push('Estudiando actualmente: ' + model.studyingNow);
+    if (model.workingNow) situationParts.push('Trabajando actualmente: ' + model.workingNow);
+    if ($('#dashboardSituation')) {
+      $('#dashboardSituation').textContent = situationParts.length
+        ? situationParts.join(' · ')
+        : 'Tu situación quedó registrada y puedes actualizarla más adelante.';
+    }
+
+    const chips = $('#dashboardProfileChips');
+    if (chips) {
+      chips.innerHTML = '';
+      if (Array.isArray(model.evidence) && model.evidence.length) {
+        model.evidence.forEach((value) => {
+          const chip = document.createElement('span');
+          chip.className = 'dashboard-chip';
+          chip.textContent = value;
+          chips.appendChild(chip);
+        });
+      } else {
+        const empty = document.createElement('span');
+        empty.className = 'dashboard-chip-empty';
+        empty.textContent = 'Tus intereses y fortalezas aparecerán aquí cuando estén disponibles.';
+        chips.appendChild(empty);
+      }
+    }
+
+    if ($('#dashboardProgressText')) {
+      $('#dashboardProgressText').textContent =
+        (model.answersCount || 0) + ' respuestas útiles procesadas en tu conversación con Nova.';
+    }
+  }
+
+  async function startAnalysisLoading(){
+    stopAnalysisLoading();
+    const runId = ++analysisRunId;
+    const startedAt = Date.now();
+    setAnalysisProgress(8);
+
+    try {
+      // Tarea real 1: recuperar el snapshot ya persistido al finalizar.
+      const snapshot = readJsonStorage('despegaOnboardingSnapshot', null);
+      if (!snapshot?.sessionId || !snapshot?.step1 || !snapshot?.step2 || !snapshot?.step3) {
+        throw new Error('No encontramos un perfil completo para construir la ruta.');
+      }
+      setAnalysisProgress(34);
+
+      // Tarea real 2: validar coherencia mínima del perfil de la misma sesión.
+      if (snapshot.sessionId !== localStorage.getItem('despegaInterviewSession')) {
+        throw new Error('La sesión del perfil no coincide con la sesión activa.');
+      }
+      setAnalysisProgress(58);
+
+      // Tarea real 3: construir y renderizar el modelo que consumirá el dashboard.
+      const dashboardModel = buildDashboardModel(snapshot);
+      renderDashboard(dashboardModel);
+      localStorage.setItem('despegaDashboardModel', JSON.stringify(dashboardModel));
+      setAnalysisProgress(86);
+
+      // Duración mínima únicamente para evitar un flash visual; no determina el éxito.
+      const elapsed = Date.now() - startedAt;
+      const remaining = Math.max(0, 900 - elapsed);
+      await new Promise(resolve => {
+        analysisTimer = setTimeout(resolve, remaining);
+      });
+
+      if (runId !== analysisRunId || currentStep !== 'analysis') return;
+      setAnalysisProgress(100);
+      localStorage.setItem('despegaRoutePrepared', 'true');
+      await new Promise(resolve => setTimeout(resolve, reduceMotion ? 0 : 260));
+      if (runId === analysisRunId && currentStep === 'analysis') goTo('dashboard');
+    } catch (error) {
+      console.error('[DESPEGA ANALYSIS]', error);
+      if (runId !== analysisRunId || currentStep !== 'analysis') return;
+      setAnalysisProgress(0);
+      const note = $('.analysis-note p');
+      if (note) note.textContent = error.message || 'No pudimos preparar tu ruta. Vuelve a intentarlo.';
+    }
   }
 
 
@@ -3197,7 +3614,7 @@ main{width:100%;height:100%}
 
   
 
-  const flowOrder = ['login', 'step1', 'step2', 'step3', 'analysis'];
+  const flowOrder = ['login', 'step1', 'step2', 'step3', 'analysis', 'dashboard'];
   const reduceMotion = window.matchMedia &&
     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -3254,7 +3671,7 @@ main{width:100%;height:100%}
     });
 
     currentStep = step;
-    document.title = pageTitles[step] || '🚀 Despega+';
+    document.title = pageTitles[step] || '🚀 DESPEGA';
     closeLanguage();
 
     animateStepper(views[step], step);
@@ -3402,7 +3819,17 @@ main{width:100%;height:100%}
 
       const msg = $('#formMessage');
       if (msg) msg.textContent = '';
-      showToast('Login listo para conectar con autenticación.');
+      sessionStorage.setItem('despegaActiveAccount', documentValue);
+
+      const completed = localStorage.getItem('despegaOnboardingCompleted') === 'true';
+      const snapshot = readJsonStorage('despegaOnboardingSnapshot', null);
+      if (completed && snapshot?.sessionId) {
+        renderDashboard(buildDashboardModel(snapshot));
+        goTo('dashboard');
+        return;
+      }
+
+      showToast('Cuenta lista. Completa tu perfil para continuar.');
     });
   }
 
@@ -3512,7 +3939,7 @@ main{width:100%;height:100%}
     registerForm.addEventListener('submit', (event) => {
       event.preventDefault();
 
-      safeSave('despegaRegisterStep1', {
+      const accountData = {
         firstName: $('#firstNameInput')?.value.trim() || '',
         lastName: $('#lastNameInput')?.value.trim() || '',
         document: $('#registerDocumentInput')?.value.trim() || '',
@@ -3520,7 +3947,15 @@ main{width:100%;height:100%}
         province: $('#provinceSelect')?.value || '',
         district: $('#districtSelect')?.value || '',
         email: $('#emailInput')?.value.trim() || ''
+      };
+      safeSave('despegaRegisterStep1', accountData);
+      safeSave('despegaAccount', {
+        firstName: accountData.firstName,
+        lastName: accountData.lastName,
+        document: accountData.document,
+        email: accountData.email
       });
+      sessionStorage.setItem('despegaActiveAccount', accountData.document || accountData.email || 'registered');
 
       animateThen(event.submitter || registerForm.querySelector('.register-continue'), 'forward', () => goTo('step2'));
     });
@@ -3754,12 +4189,12 @@ main{width:100%;height:100%}
     no_speech_1: {
       label: 'No escuché una respuesta todavía',
       caption: 'No escuché una respuesta todavía',
-      helper: 'Tómate tu tiempo. Nova volverá a escucharte.'
+      helper: 'Tómate tu tiempo. Nova volverá a escucharte automáticamente.'
     },
     no_speech_2: {
       label: 'No detecté voz',
       caption: 'No detecté voz.',
-      helper: 'Toca el micrófono cuando quieras continuar.'
+      helper: 'Toca el micrófono una vez cuando quieras continuar.'
     },
     paused: {
       label: 'Conversación pausada',
@@ -3793,6 +4228,7 @@ main{width:100%;height:100%}
   );
 
   const NOVA_EMOTIONS = new Set(['happy','curious','supportive','celebrating','calm']);
+  const NOVA_NOTICE_STATES = new Set(['no_speech_1','no_speech_2','paused','error']);
 
   function showNovaNotice(title, message, tone = 'supportive') {
     if (!novaNotice) return;
@@ -3824,6 +4260,10 @@ main{width:100%;height:100%}
   function setAgentState(state = 'idle') {
     const ui = STATE_UI[state] || STATE_UI.idle;
     interview.agentState = state;
+
+    // Un solo estado visual puede estar activo. Al hablar, escuchar,
+    // analizar o terminar, cualquier aviso viejo deja de competir con Nova.
+    if (!NOVA_NOTICE_STATES.has(state)) clearNovaNotice();
 
     if (agentOrb) {
       agentOrb.dataset.state = state;
@@ -4020,8 +4460,8 @@ main{width:100%;height:100%}
     const name = getInterviewFirstName();
     setAgentEmotion('happy');
     const intro = name
-      ? 'Hola, ' + name + '. Soy Nova. Vamos a descubrir qué ruta puede encajar mejor contigo.'
-      : 'Hola. Soy Nova. Vamos a descubrir qué ruta puede encajar mejor contigo.';
+      ? 'Hola, ' + name + '. Soy Nova, tu agente de orientación en DESPEGA. Voy a conocerte un poco mejor para poder orientarte y recomendarte opciones que puedas explorar.'
+      : 'Hola. Soy Nova, tu agente de orientación en DESPEGA. Voy a conocerte un poco mejor para poder orientarte y recomendarte opciones que puedas explorar.';
     const welcome = composeNovaTurn(
       intro,
       'Para empezar, ' + interview.currentQuestion,
@@ -4390,11 +4830,11 @@ main{width:100%;height:100%}
     if (intent === 'pause') {
       interview.autoListenEnabled = false;
       cancelRecordingWithoutProcessing();
-      setVoiceStatus('La conversación quedó en pausa. Toca el micrófono cuando quieras continuar.', 'ok');
+      setVoiceStatus('La conversación quedó en pausa. Toca el micrófono una vez cuando quieras continuar.', 'ok');
       await speakText(String(result?.control_response || 'Claro. Cuando quieras, continuamos.'), false);
       setAgentState('paused');
       if (recordCaption) recordCaption.textContent = 'Conversación pausada';
-      if (recordHelper) recordHelper.textContent = 'Toca el micrófono cuando quieras continuar.';
+      if (recordHelper) recordHelper.textContent = 'Toca el micrófono una vez cuando quieras continuar.';
       if (recordAnswerButton) recordAnswerButton.disabled = false;
       return true;
     }
@@ -5046,7 +5486,7 @@ main{width:100%;height:100%}
       setAgentState('no_speech_1');
       showNovaNotice(
         'No escuché una respuesta todavía',
-        'Tómate tu tiempo. Nova volverá a escucharte.',
+        'Tómate tu tiempo. Nova volverá a escucharte automáticamente.',
         'supportive'
       );
       setVoiceStatus('No escuché una respuesta todavía. Tómate tu tiempo.', 'ok');
@@ -5070,7 +5510,7 @@ main{width:100%;height:100%}
       setAgentState('no_speech_2');
       showNovaNotice(
         'No detecté voz.',
-        'Toca el micrófono cuando quieras continuar.',
+        'Toca el micrófono una vez cuando quieras continuar.',
         'paused'
       );
       setVoiceStatus('Conversación pausada.', speech.ok ? 'ok' : 'error');
@@ -5601,19 +6041,37 @@ main{width:100%;height:100%}
     });
   }
 
-  function toggleRealRecording(event) {
+  async function restartNovaListening(event, source = 'manual_click') {
+    event?.preventDefault();
+    if (currentStep !== 'step3' || interview.isProcessing) return false;
+
+    // Un solo gesto limpia cualquier turno residual y abre una captura nueva.
+    cancelRecordingWithoutProcessing();
+    clearListeningWatchdog();
+    interview.autoListenEnabled = true;
+    interview.noSpeechReminderCount = 0;
+    interview.listenRecoveryAttempts = 0;
+    clearNovaNotice();
+
+    const lifecycle = interview.lifecycleId;
+    const listenToken = ++interview.listenTurnToken;
+    novaTurnLog('manual_restart', { source, lifecycle, listenToken });
+
+    return startRealRecording(event, { lifecycle, listenToken, automatic: false });
+  }
+
+  async function toggleRealRecording(event) {
     event?.preventDefault();
     if (currentStep !== 'step3' || interview.isProcessing) return;
-    if (interview.recordingState === 'starting' || interview.recordingState === 'stopping') return;
+
     if (interview.recordingState === 'recording') {
       stopRealRecording('manual');
       return;
     }
-    if (interview.recordingState === 'idle') {
-      interview.autoListenEnabled = true;
-      interview.noSpeechReminderCount = 0;
-      startRealRecording(event);
-    }
+
+    // starting/stopping ya no obliga a un segundo clic: se cancela el
+    // lifecycle anterior y el mismo gesto inicia la nueva escucha.
+    await restartNovaListening(event, 'mic_click');
   }
 
   async function processRecordedAudio(recordingId, recorder, chunks = []) {
@@ -5729,7 +6187,12 @@ main{width:100%;height:100%}
       });
       setInterviewBusy(false);
       novaTurnLog('processing_end', { questionId: queueItem.questionId, recordingId });
-      const accepted = await receiveAIResult(result, recordingId);
+      const accepted = await receiveAIResult(
+        result,
+        recordingId,
+        queueItem.questionId,
+        processingLifecycle
+      );
       if (accepted) console.log('[NOVA AUDIO] turn_completed', { recordingId });
     } catch (error) {
       if (error?.name === 'AbortError') {
@@ -5770,9 +6233,48 @@ main{width:100%;height:100%}
         console.warn('[NOVA AUDIO] quality_rejected', { recordingId, code: error.code });
         setInterviewBusy(false);
         resetForRecording();
+
+        if (error?.code === 'NO_SPEECH_DETECTED' && interview.autoListenEnabled) {
+          interview.noSpeechReminderCount += 1;
+
+          if (interview.noSpeechReminderCount <= 1) {
+            setAgentEmotion('supportive');
+            setAgentState('no_speech_1');
+            showNovaNotice(
+              'No escuché una respuesta todavía',
+              'Tómate tu tiempo. Nova volverá a escucharte automáticamente.',
+              'supportive'
+            );
+            setVoiceStatus('No detecté voz. Volveré a escucharte automáticamente.', 'ok');
+
+            await new Promise(resolve => setTimeout(resolve, 450));
+            if (
+              currentStep === 'step3' &&
+              processingLifecycle === interview.lifecycleId &&
+              interview.autoListenEnabled
+            ) {
+              await resumeListeningAfterSpeech('quality_no_speech_retry');
+            }
+            return;
+          }
+        }
+
+        interview.autoListenEnabled = false;
         setAgentState('paused');
-        showNovaNotice(qualityFailure.title, qualityFailure.message, 'paused');
-        setVoiceStatus(qualityFailure.message, 'error');
+        showNovaNotice(
+          qualityFailure.title,
+          error?.code === 'NO_SPEECH_DETECTED'
+            ? 'Toca el micrófono una vez cuando quieras continuar.'
+            : qualityFailure.message,
+          'paused'
+        );
+        setVoiceStatus(
+          error?.code === 'NO_SPEECH_DETECTED'
+            ? 'Conversación pausada. Toca el micrófono una vez para continuar.'
+            : qualityFailure.message,
+          'error'
+        );
+        if (recordAnswerButton) recordAnswerButton.disabled = false;
         return;
       }
 
@@ -5992,6 +6494,11 @@ main{width:100%;height:100%}
       setAgentEmotion(normalizeNovaEmotion(result));
     }
 
+    resetAudioTurnBeforeListening();
+    releaseMicrophone();
+    interview.noSpeechReminderCount = 0;
+    interview.listenRecoveryAttempts = 0;
+
     interview.questionId = nextDimension;
     interview.askedCount[nextDimension] = Number(interview.askedCount[nextDimension] || 0) + 1;
     interview.currentQuestion = nextQuestion;
@@ -6016,8 +6523,27 @@ main{width:100%;height:100%}
     if (currentStep !== 'step3') return;
     await resumeListeningAfterSpeech('next_question');
   }
-  async function receiveAIResult(result, expectedRecordingId = '') {
+  async function receiveAIResult(
+    result,
+    expectedRecordingId = '',
+    expectedQuestionId = interview.questionId,
+    expectedLifecycle = interview.lifecycleId
+  ) {
     if (currentStep !== 'step3') return false;
+    if (expectedQuestionId && interview.questionId !== expectedQuestionId) {
+      console.warn('[NOVA AI] stale_question_result_ignored', {
+        expectedQuestionId,
+        currentQuestionId: interview.questionId
+      });
+      return false;
+    }
+    if (Number.isFinite(expectedLifecycle) && interview.lifecycleId !== expectedLifecycle) {
+      console.warn('[NOVA AI] stale_lifecycle_result_ignored', {
+        expectedLifecycle,
+        currentLifecycle: interview.lifecycleId
+      });
+      return false;
+    }
 
     const validatedResult = validateAIResultEvidence(result, expectedRecordingId);
     if (!validatedResult) {
@@ -6036,6 +6562,8 @@ main{width:100%;height:100%}
     }
 
     result = validatedResult;
+    interview.noSpeechReminderCount = 0;
+    interview.listenRecoveryAttempts = 0;
 
     if (
       expectedRecordingId &&
@@ -6112,6 +6640,39 @@ main{width:100%;height:100%}
     if (recordAnswerButton) recordAnswerButton.disabled = false;
   }
 
+  function persistCompletedOnboarding() {
+    const step1 = readJsonStorage('despegaRegisterStep1', {});
+    const step2 = readJsonStorage('despegaRegisterStep2', {});
+    const step3 = {
+      responseMode: 'adaptive_voice_ai',
+      answersCount: interview.answersCount,
+      usefulAnswersCount: interview.usefulAnswersCount,
+      profile: interview.profile,
+      dimensionStatus: interview.dimensionStatus,
+      conversationHistory: (interview.conversationHistory || []).slice(-12),
+      completedAt: new Date().toISOString()
+    };
+
+    if (!interview.sessionId) throw new Error('No existe una sesión activa de Nova.');
+    if (!step1 || !step2 || !step3.profile) throw new Error('El perfil todavía no está completo.');
+
+    safeSave('despegaRegisterStep3', step3);
+    localStorage.setItem('despegaAIProfile', JSON.stringify(interview.profile));
+    localStorage.setItem('despegaConversationHistory', JSON.stringify(interview.conversationHistory || []));
+    persistDimensionStatus();
+
+    const snapshot = {
+      sessionId: interview.sessionId,
+      step1,
+      step2,
+      step3,
+      completedAt: step3.completedAt
+    };
+    safeSave('despegaOnboardingSnapshot', snapshot);
+    localStorage.setItem('despegaOnboardingCompleted', 'true');
+    return snapshot;
+  }
+
   async function finishNovaInterview(event) {
     event?.preventDefault();
     if (!canFinishInterview() || currentStep !== 'step3') return;
@@ -6121,22 +6682,19 @@ main{width:100%;height:100%}
       step3Finish.textContent = 'Finalizando…';
     }
 
-    safeSave('despegaRegisterStep3', {
-      responseMode: 'adaptive_voice_ai',
-      answersCount: interview.answersCount,
-      usefulAnswersCount: interview.usefulAnswersCount,
-      profile: interview.profile,
-      dimensionStatus: interview.dimensionStatus,
-      completedAt: new Date().toISOString()
-    });
-    localStorage.setItem('despegaAIProfile', JSON.stringify(interview.profile));
-    localStorage.setItem('despegaConversationHistory', JSON.stringify(interview.conversationHistory || []));
-    persistDimensionStatus();
-
-    cleanupNova();
-    goTo('analysis');
-
-    if (step3Finish) step3Finish.textContent = 'Finalizar';
+    try {
+      persistCompletedOnboarding();
+      // goTo() ejecuta cleanupNova al salir de Step 3. No hacemos un segundo cleanup.
+      goTo('analysis');
+    } catch (error) {
+      console.error('[DESPEGA FINISH]', error);
+      setAgentState('error');
+      showNovaNotice('No pude finalizar tu perfil', error.message || 'Inténtalo nuevamente.', 'error');
+      if (step3Finish) {
+        step3Finish.disabled = false;
+        step3Finish.textContent = 'Finalizar';
+      }
+    }
   }
 
   step3Finish?.addEventListener('click', finishNovaInterview);
@@ -6169,7 +6727,12 @@ main{width:100%;height:100%}
         const result = await callDespegaAI(row.blob, row);
         await idbDeleteVoice(row.id);
         if (currentStep === 'step3' && row.sessionId === interview.sessionId && row.questionId === interview.questionId) {
-          await receiveAIResult(result, row.recordingId || row.id || '');
+          await receiveAIResult(
+            result,
+            row.recordingId || row.id || '',
+            row.questionId,
+            interview.lifecycleId
+          );
         }
       } catch (error) {
         if (error?.name !== 'AbortError') console.error('[NOVA QUEUE]', error);
@@ -6180,6 +6743,10 @@ main{width:100%;height:100%}
       break;
     }
   }
+
+  $('#dashboardExploreButton')?.addEventListener('click', () => {
+    showToast('La exploración de oportunidades se habilitará con el catálogo conectado.');
+  });
 
   window.addEventListener('online', () => {
     if (recordAnswerButton) recordAnswerButton.disabled = false;
