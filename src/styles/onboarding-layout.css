@@ -1,28 +1,32 @@
 /*
- * DESPEGA+ — Onboarding layout canónico
+ * DESPEGA+ — Onboarding layout consolidado
+ * Prioridad actual: Web + Tablet.
  *
  * Una sola fuente de verdad para:
  * - Tus datos
  * - Tu situación
- * - Conocerte mejor
+ * - Conocerte mejor / Nova
  *
- * Objetivos:
- * - mismo anclaje vertical para las cards;
- * - zona segura real para Inicio + Idioma;
- * - ninguna card cambia de Y por tener más o menos contenido;
- * - Nova puede crecer sin invadir navbar ni cortar CTA;
- * - sin scroll interno permanente dentro de las cards.
+ * Mobile queda como fallback funcional; no se optimiza pixel-perfect en esta etapa.
  */
 
 :root {
   --onboarding-nav-safe-zone: 68px;
-  --onboarding-card-top: clamp(168px, 22dvh, 205px);
-  --onboarding-card-max-width: 720px;
-  --onboarding-side-gap: clamp(16px, 2vw, 32px);
+  --onboarding-card-top: clamp(108px, 13.5dvh, 150px);
   --onboarding-card-bottom-gap: 18px;
+  --onboarding-side-gap: clamp(18px, 2vw, 32px);
+  --onboarding-card-max-width: 720px;
+  --onboarding-bg: var(--bg-main, #fffdf8);
+  --onboarding-yellow: #ffe174;
+  --onboarding-pink: #f46fc3;
+  --onboarding-cyan: #67dcf4;
+  --onboarding-violet: #8e72f5;
 }
 
-@media (min-width: 781px) {
+/* =========================================================
+   ONBOARDING — SHARED / DESKTOP
+   ========================================================= */
+@media (min-width: 1200px) {
   #registerView,
   #step2View,
   #step3View {
@@ -31,23 +35,30 @@
     min-height: 0 !important;
     max-height: 100dvh;
     box-sizing: border-box;
-    grid-template-columns: minmax(0, 47%) minmax(0, 53%) !important;
     align-items: stretch;
     overflow: hidden !important;
     overscroll-behavior: none;
+    background: var(--onboarding-bg);
+  }
+
+  #registerView {
+    grid-template-columns: minmax(0, 47%) minmax(0, 53%) !important;
+  }
+
+  #step2View {
+    grid-template-columns: minmax(420px, 42%) minmax(650px, 58%) !important;
+  }
+
+  #step3View {
+    grid-template-columns: minmax(420px, 42%) minmax(650px, 58%) !important;
   }
 
   .language-wrap {
     top: 18px !important;
     right: 32px !important;
-    z-index: 20;
+    z-index: 30;
   }
 
-  /*
-   * ANCLAJE CANÓNICO
-   * Todas las cards empiezan en la misma coordenada Y.
-   * La altura del contenido no modifica su posición.
-   */
   #registerView .register-panel,
   #step2View .flow-panel,
   #step3View .flow-panel {
@@ -67,41 +78,33 @@
       var(--onboarding-side-gap) !important;
   }
 
-  #registerView .register-card,
-  #step2View .flow-card,
-  #step2View .step2-card,
-  #step3View .flow-card,
-  #step3View .step3-card {
+  #registerView .register-card {
     width: min(100%, var(--onboarding-card-max-width)) !important;
     height: auto !important;
     min-height: 0 !important;
     max-height: calc(100dvh - var(--onboarding-card-top) - var(--onboarding-card-bottom-gap)) !important;
     box-sizing: border-box;
     align-self: start !important;
-    margin-top: 0 !important;
-    margin-bottom: 0 !important;
+    margin: 0 !important;
   }
 
   #registerView .register-continue,
-  #step2View .flow-actions,
-  #step3View .flow-actions {
+  #step2View .flow-actions {
     position: static !important;
     inset: auto !important;
   }
 
-  /* Columna visual de Tus datos */
   #registerView .hero-register {
     min-width: 0;
     min-height: 0;
     overflow: hidden;
   }
+}
 
-  /*
-   * HERO CANÓNICO PASOS 2 Y 3
-   * El asset se utiliza únicamente como ilustración inferior.
-   * Título/subtítulo se reconstruyen de forma independiente para evitar
-   * la sensación de "póster" y mantener la composición del Login.
-   */
+/* =========================================================
+   ONBOARDING — VISUAL HERO / DECORATIONS
+   ========================================================= */
+@media (min-width: 900px) {
   #step2View .onboarding-art-panel,
   #step3View .onboarding-art-panel {
     position: relative !important;
@@ -111,23 +114,23 @@
     height: 100dvh !important;
     padding: 0 !important;
     overflow: hidden !important;
-    background: var(--bg-main, #fffdf9) !important;
+    background: var(--onboarding-bg) !important;
     isolation: isolate;
   }
 
   #step2View .onboarding-art-panel::before,
   #step3View .onboarding-art-panel::before {
     position: absolute;
-    z-index: 3;
-    top: clamp(88px, 11.5dvh, 118px);
+    z-index: 4;
+    top: clamp(76px, 9.2dvh, 104px);
     left: 50%;
-    width: min(84%, 720px);
+    width: min(86%, 720px);
     transform: translateX(-50%);
-    color: var(--navy-900, #17356f);
+    color: var(--navy-900, #0f2b68);
     font-family: Poppins, system-ui, sans-serif;
-    font-size: clamp(42px, 3.45vw, 58px);
+    font-size: clamp(38px, 3.25vw, 58px);
     font-weight: 800;
-    line-height: 1.02;
+    line-height: 1.01;
     letter-spacing: -0.035em;
     text-align: center;
     white-space: pre-line;
@@ -145,14 +148,14 @@
   #step2View .onboarding-art-panel::after,
   #step3View .onboarding-art-panel::after {
     position: absolute;
-    z-index: 3;
-    top: clamp(205px, 25.5dvh, 230px);
+    z-index: 4;
+    top: clamp(185px, 21.5dvh, 220px);
     left: 50%;
-    width: min(74%, 620px);
+    width: min(76%, 610px);
     transform: translateX(-50%);
     color: #7184a8;
     font-family: Poppins, system-ui, sans-serif;
-    font-size: clamp(14px, 1.2vw, 18px);
+    font-size: clamp(13px, 1.08vw, 17px);
     font-weight: 400;
     line-height: 1.35;
     text-align: center;
@@ -167,80 +170,440 @@
     content: "Tus intereses y barreras nos permiten mostrarte opciones más relevantes.";
   }
 
+  .onboarding-decoration {
+    position: absolute;
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  .onboarding-decoration-yellow {
+    top: -112px;
+    left: -132px;
+    width: clamp(330px, 29vw, 500px);
+    height: clamp(270px, 28vw, 430px);
+    border-radius: 0 0 88% 0;
+    background: var(--onboarding-yellow);
+    transform: rotate(-4deg);
+    opacity: .92;
+  }
+
+  .onboarding-decoration-pink {
+    left: -118px;
+    bottom: -132px;
+    width: clamp(330px, 27vw, 470px);
+    height: clamp(190px, 19vw, 295px);
+    border-radius: 58% 48% 0 0 / 62% 52% 0 0;
+    background: var(--onboarding-pink);
+    transform: rotate(5deg);
+    opacity: .96;
+  }
+
+  .onboarding-sparks {
+    position: absolute;
+    z-index: 2;
+    left: clamp(48px, 7vw, 112px);
+    top: clamp(315px, 40dvh, 425px);
+    width: 72px;
+    height: 94px;
+    pointer-events: none;
+  }
+
+  .onboarding-sparks span {
+    position: absolute;
+    display: block;
+    width: 11px;
+    border-radius: 999px;
+    background: #ffc928;
+  }
+
+  .onboarding-sparks span:nth-child(1) {
+    left: 31px;
+    top: 0;
+    height: 37px;
+    transform: rotate(-42deg);
+  }
+
+  .onboarding-sparks span:nth-child(2) {
+    left: 12px;
+    top: 42px;
+    height: 45px;
+    transform: rotate(-65deg);
+  }
+
+  .onboarding-sparks span:nth-child(3) {
+    left: 0;
+    top: 78px;
+    width: 31px;
+    height: 10px;
+  }
+
+  #step3View .nova-sparks span:nth-child(1) {
+    background: var(--onboarding-cyan);
+  }
+
+  #step3View .nova-sparks span:nth-child(2) {
+    background: #f154a3;
+  }
+
+  #step3View .nova-sparks span:nth-child(3) {
+    background: #ffc928;
+  }
+
+  .onboarding-nova-accent {
+    position: absolute;
+    z-index: 2;
+    display: block;
+    border-radius: 999px;
+    pointer-events: none;
+    opacity: .72;
+  }
+
+  .onboarding-nova-accent-cyan {
+    right: 10%;
+    top: 33%;
+    width: 10px;
+    height: 34px;
+    background: var(--onboarding-cyan);
+    transform: rotate(28deg);
+  }
+
+  .onboarding-nova-accent-violet {
+    right: 7%;
+    top: 38%;
+    width: 10px;
+    height: 28px;
+    background: var(--onboarding-violet);
+    transform: rotate(58deg);
+  }
+
   #step2View .onboarding-art,
   #step3View .onboarding-art {
     position: absolute !important;
-    z-index: 1 !important;
+    z-index: 3 !important;
     left: 50% !important;
     bottom: 0 !important;
-    width: min(82%, 690px) !important;
-    height: calc(100dvh - 255px) !important;
+    width: min(82%, 670px) !important;
+    height: calc(100dvh - 250px) !important;
     max-width: none !important;
     max-height: none !important;
     transform: translateX(-50%) !important;
-    object-fit: cover !important;
+    object-fit: contain !important;
     object-position: center bottom !important;
     border-radius: 0 !important;
     clip-path: none !important;
-    mix-blend-mode: multiply !important;
-    filter: brightness(1.025) saturate(1.035);
+    mix-blend-mode: normal !important;
+    filter: none !important;
   }
+}
 
-  /*
-   * PASO 3 — Conocerte mejor
-   * Nova crece; el espacio interno se optimiza sin mover la card hacia arriba.
-   */
-  #step3View .step3-card {
-    padding: 14px 18px 15px !important;
-    gap: 6px !important;
-    border-radius: 22px !important;
-  }
-
-  #step3View .agent-meta-row {
-    min-height: 20px !important;
-  }
-
-  #step3View .nova-centered-stage {
-    min-height: 232px !important;
-    display: flex !important;
-    flex-direction: column !important;
-    align-items: center !important;
-    justify-content: center !important;
-    gap: 2px !important;
-  }
-
-  #step3View .agent-voice-panel {
-    gap: 6px !important;
-    margin-top: 0 !important;
-  }
-
-  #step3View .agent-example-card {
-    padding: 8px 11px !important;
-    border-radius: 14px !important;
-  }
-
-  #step3View .agent-example-card .example-quote {
-    padding: 6px 9px !important;
-  }
-
-  #step3View .agent-flow-actions {
-    margin-top: 4px !important;
-  }
-
-  /* Paso 2 conserva respiración y controles legibles. */
+/* =========================================================
+   STEP 2 — TU SITUACIÓN
+   ========================================================= */
+@media (min-width: 1200px) {
   #step2View .step2-card {
     width: min(100%, 700px) !important;
     min-height: 480px !important;
     padding: 22px 26px 22px !important;
     gap: 10px !important;
     border-radius: 24px !important;
+    margin: 0 !important;
+    box-sizing: border-box;
   }
 }
 
-/* Laptop real / navegador con altura útil reducida. */
-@media (min-width: 781px) and (max-height: 800px) {
+/* =========================================================
+   STEP 3 — NOVA / DESKTOP
+   ========================================================= */
+#step3View.nova-page-view[hidden] {
+  display: none !important;
+}
+
+@media (min-width: 1200px) {
+  #step3View.nova-page-view {
+    display: grid !important;
+    width: 100%;
+    height: 100dvh;
+    min-height: 0;
+    padding: 0;
+    overflow: hidden !important;
+    background: var(--onboarding-bg);
+  }
+
+  #step3View .nova-flow-panel {
+    min-width: 0;
+    min-height: 0;
+  }
+
+  #step3View .nova-conversation-card {
+    width: min(760px, 100%) !important;
+    height: clamp(510px, 68dvh, 620px) !important;
+    min-height: 0 !important;
+    max-height: calc(100dvh - var(--onboarding-card-top) - var(--onboarding-card-bottom-gap)) !important;
+    margin: 0 !important;
+    padding: 18px 24px 18px !important;
+    box-sizing: border-box;
+    display: grid !important;
+    grid-template-rows: auto minmax(0, 1fr) auto !important;
+    gap: 0 !important;
+    overflow: hidden !important;
+    border: 1px solid #edf1f6 !important;
+    border-radius: 28px !important;
+    background: #fff !important;
+    box-shadow: 0 18px 46px rgba(15, 43, 104, .09) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  #step3View .nova-stepper {
+    width: 88% !important;
+    max-width: 660px !important;
+    min-height: 60px !important;
+    margin: 0 auto 2px !important;
+    padding: 0 2px !important;
+    align-self: start;
+  }
+
+  #step3View .nova-stepper::before {
+    top: 15px !important;
+  }
+
+  #step3View .nova-stepper .step {
+    gap: 5px !important;
+    font-size: 11px !important;
+    line-height: 1.2 !important;
+  }
+
+  #step3View .nova-stepper .step-circle {
+    width: 32px !important;
+    height: 32px !important;
+    border-width: 3px !important;
+    font-size: 12px !important;
+  }
+
+  #step3View .nova-toolbar {
+    display: none !important;
+  }
+
+  #step3View .nova-conversation-stage {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 8px 20px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    overflow: hidden !important;
+    transform: none !important;
+  }
+
+  #step3View .nova-orb-zone {
+    width: 100% !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 4px !important;
+  }
+
+  #step3View .nova-orb {
+    width: 290px !important;
+    height: 290px !important;
+    margin: 0 auto !important;
+  }
+
+  #step3View .nova-orb .agent-orb-core {
+    width: 205px !important;
+    height: 205px !important;
+  }
+
+  #step3View .nova-name {
+    margin: 4px 0 0 !important;
+    color: var(--navy-900, #0f2b68) !important;
+    font-size: 24px !important;
+    line-height: 1.08 !important;
+    font-weight: 800 !important;
+    text-align: center !important;
+  }
+
+  #step3View .agent-state-label {
+    min-height: 20px !important;
+    max-width: 330px !important;
+    margin: 3px 0 0 !important;
+    padding: 0 !important;
+    font-size: 13.5px !important;
+    line-height: 1.3 !important;
+    font-weight: 600 !important;
+    text-align: center !important;
+  }
+
+  #step3View .nova-question-inline,
+  #step3View .nova-question-wrap,
+  #step3View .nova-question-kicker,
+  #step3View .nova-current-question {
+    display: none !important;
+  }
+
+  #step3View .nova-context-panel {
+    width: min(100%, 660px) !important;
+    min-height: 78px !important;
+    max-height: 90px !important;
+    margin: 4px auto 0 !important;
+    padding: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 4px !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+  }
+
+  #step3View .nova-notice {
+    width: min(460px, 100%) !important;
+    margin: 2px auto 0 !important;
+    padding: 4px 8px !important;
+    text-align: center !important;
+    line-height: 1.35 !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  #step3View .nova-notice strong,
+  #step3View .nova-notice span {
+    display: block;
+  }
+
+  #step3View .nova-notice[hidden] {
+    display: none !important;
+  }
+
+  #step3View .nova-mic-panel {
+    width: 100% !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 4px !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  #step3View .nova-mic-panel .click-mic-button,
+  #step3View .nova-mic-panel .record-caption,
+  #step3View .nova-mic-panel .record-helper {
+    display: none !important;
+  }
+
+  #step3View .nova-mic-panel[data-state="paused"] .click-mic-button,
+  #step3View .nova-mic-panel[data-state="error"] .click-mic-button,
+  #step3View .nova-mic-panel[data-state="no_speech_2"] .click-mic-button {
+    display: grid !important;
+    width: 48px !important;
+    height: 48px !important;
+    min-width: 48px !important;
+    min-height: 48px !important;
+    margin: 4px auto 0 !important;
+  }
+
+  #step3View .nova-mic-panel[data-state="paused"] .record-caption,
+  #step3View .nova-mic-panel[data-state="error"] .record-caption,
+  #step3View .nova-mic-panel[data-state="no_speech_2"] .record-caption {
+    display: block !important;
+    margin: 2px auto 0 !important;
+    text-align: center !important;
+  }
+
+  #step3View .nova-confirmation,
+  #step3View .nova-confirmation.nova-keyword-rail {
+    width: min(100%, 640px) !important;
+    min-height: 0 !important;
+    margin: 4px auto 0 !important;
+    padding: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+  }
+
+  #step3View .nova-confirmation[hidden],
+  #step3View .nova-confirmation.nova-keyword-rail[hidden] {
+    display: none !important;
+  }
+
+  #step3View .nova-confirmation .ai-transcript,
+  #step3View .nova-confirmation .ai-auto-next {
+    display: none !important;
+  }
+
+  #step3View .nova-actions {
+    width: 100% !important;
+    min-height: 54px !important;
+    margin: 0 !important;
+    padding: 4px 0 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    gap: 0 !important;
+    background: transparent !important;
+  }
+
+  #step3View .nova-finish-button {
+    flex: 0 0 auto !important;
+    width: auto !important;
+    min-width: 118px !important;
+    max-width: 130px !important;
+    height: 42px !important;
+    min-height: 42px !important;
+    margin: 0 !important;
+    padding: 0 20px !important;
+    border: 0 !important;
+    border-radius: 13px !important;
+    font-size: 12.5px !important;
+    font-weight: 700 !important;
+  }
+
+  #step3View .nova-finish-button:disabled {
+    background: #d7deea !important;
+    color: #fff !important;
+    opacity: 1 !important;
+    cursor: not-allowed !important;
+    box-shadow: none !important;
+  }
+
+  #step3View .nova-finish-button:not(:disabled) {
+    background: linear-gradient(100deg, #7558ef 0%, #cf4fd3 52%, #f1268d 100%) !important;
+    color: #fff !important;
+    box-shadow: 0 8px 20px rgba(216, 58, 141, .15) !important;
+  }
+
+  #step3View .nova-finish-button:not(:disabled):hover {
+    filter: brightness(1.035);
+  }
+}
+
+/* =========================================================
+   WEB COMPACT — 1200+ con altura <= 800
+   ========================================================= */
+@media (min-width: 1200px) and (max-height: 800px) {
   :root {
-    --onboarding-nav-safe-zone: 54px;
     --onboarding-card-top: 82px;
     --onboarding-card-bottom-gap: 12px;
     --onboarding-side-gap: 22px;
@@ -251,7 +614,6 @@
     right: 26px !important;
   }
 
-  /* Tus datos */
   #registerView .register-card {
     padding: 13px 20px 14px !important;
     gap: 6px !important;
@@ -307,98 +669,51 @@
     border-radius: 11px !important;
   }
 
-  #registerView .input-control {
-    padding: 0 10px !important;
-    gap: 8px !important;
-  }
-
-  #registerView .input-control input,
-  #registerView .geo-select-control select {
-    font-size: 10.8px !important;
-  }
-
-  #registerView .input-control > svg,
-  #registerView .geo-select-control > svg {
-    width: 17px !important;
-    height: 17px !important;
-  }
-
-  #registerView .geo-grid {
-    gap: 8px !important;
-  }
-
-  #registerView .field-help {
-    font-size: 8.6px !important;
-    line-height: 1.25 !important;
-  }
-
   #registerView .register-continue {
     height: 39px !important;
     margin-top: 0 !important;
     font-size: 11.5px !important;
   }
 
-  /* Hero de Tus datos: mantiene la jerarquía del Login. */
-  #registerView .hero-copy {
-    margin-top: 0 !important;
-    width: min(760px, 88%) !important;
-  }
-
-  #registerView .hero-logo {
-    width: clamp(235px, 18vw, 310px) !important;
-    max-width: 42% !important;
-  }
-
-  #registerView .register-hero-copy h1 {
-    font-size: clamp(44px, 4vw, 64px) !important;
-    line-height: 0.98 !important;
-    letter-spacing: -0.035em !important;
-  }
-
-  #registerView .hero-copy p {
-    margin-top: 14px !important;
-    font-size: clamp(14px, 1.15vw, 18px) !important;
-    line-height: 1.35 !important;
-  }
-
-  #registerView .register-characters {
-    width: min(760px, 82%) !important;
-    max-height: 53dvh !important;
-  }
-
-  /* Heroes pasos 2 y 3 */
   #step2View .onboarding-art-panel::before,
   #step3View .onboarding-art-panel::before {
-    top: 64px !important;
-    width: min(84%, 680px) !important;
-    font-size: clamp(37px, 3.1vw, 48px) !important;
-    line-height: 1.01 !important;
+    top: 58px !important;
+    width: min(86%, 650px) !important;
+    font-size: clamp(34px, 3vw, 46px) !important;
   }
 
   #step2View .onboarding-art-panel::after,
   #step3View .onboarding-art-panel::after {
-    top: 158px !important;
-    width: min(74%, 580px) !important;
-    font-size: 13.2px !important;
-    line-height: 1.32 !important;
+    top: 146px !important;
+    width: min(78%, 570px) !important;
+    font-size: 12.8px !important;
   }
 
   #step2View .onboarding-art,
   #step3View .onboarding-art {
-    width: min(82%, 660px) !important;
-    height: calc(100dvh - 234px) !important;
+    width: min(84%, 625px) !important;
+    height: calc(100dvh - 218px) !important;
   }
 
-  /* Tu situación */
+  .onboarding-decoration-yellow {
+    top: -118px;
+    left: -138px;
+  }
+
+  .onboarding-decoration-pink {
+    bottom: -145px;
+  }
+
+  .onboarding-sparks {
+    top: 38dvh;
+    transform: scale(.86);
+    transform-origin: left center;
+  }
+
   #step2View .step2-card {
-    width: min(100%, 700px) !important;
     min-height: 500px !important;
     padding: 18px 24px 20px !important;
     gap: 9px !important;
-  }
-
-  #step2View .stepper {
-    margin-bottom: 2px !important;
   }
 
   #step2View .step2-card .flow-heading h2 {
@@ -423,10 +738,6 @@
     border-radius: 13px !important;
   }
 
-  #step2View .step2-card .select-control select {
-    font-size: 12.5px !important;
-  }
-
   #step2View .step2-card .binary-grid {
     gap: 8px !important;
   }
@@ -441,10 +752,6 @@
     font-size: 10.6px !important;
   }
 
-  #step2View .step2-card .flow-actions {
-    margin-top: 5px !important;
-  }
-
   #step2View .step2-card .secondary-button,
   #step2View .step2-card .flow-primary {
     height: 42px !important;
@@ -452,74 +759,402 @@
     font-size: 11.5px !important;
   }
 
-  /* Conocerte mejor */
-  #step3View .step3-card {
-    padding: 10px 16px 11px !important;
-    gap: 4px !important;
+  #step3View .nova-conversation-card {
+    width: min(720px, 100%) !important;
+    height: clamp(500px, 68dvh, 525px) !important;
+    padding: 15px 22px 15px !important;
+    border-radius: 24px !important;
   }
 
-  #step3View .agent-meta-row {
-    min-height: 18px !important;
+  #step3View .nova-stepper {
+    width: 88% !important;
+    min-height: 54px !important;
+    margin-bottom: 0 !important;
   }
 
-  #step3View .nova-centered-stage {
-    min-height: 190px !important;
-    gap: 1px !important;
+  #step3View .nova-stepper .step {
+    gap: 3px !important;
+    font-size: 10px !important;
+  }
+
+  #step3View .nova-stepper .step-circle {
+    width: 29px !important;
+    height: 29px !important;
+    font-size: 11px !important;
+  }
+
+  #step3View .nova-stepper::before {
+    top: 14px !important;
+  }
+
+  #step3View .nova-conversation-stage {
+    padding: 4px 16px !important;
+  }
+
+  #step3View .nova-orb {
+    width: 265px !important;
+    height: 265px !important;
+  }
+
+  #step3View .nova-orb .agent-orb-core {
+    width: 188px !important;
+    height: 188px !important;
   }
 
   #step3View .nova-name {
-    font-size: 16px !important;
+    font-size: 22px !important;
   }
 
   #step3View .agent-state-label {
-    font-size: 10.4px !important;
+    font-size: 12.5px !important;
   }
 
-  #step3View .agent-voice-panel {
-    gap: 4px !important;
+  #step3View .nova-context-panel {
+    min-height: 70px !important;
+    max-height: 82px !important;
   }
 
-  #step3View .agent-example-card {
-    padding: 6px 9px !important;
-    border-radius: 13px !important;
-  }
-
-  #step3View .agent-example-card .example-quote {
-    padding: 5px 8px !important;
-    font-size: 8.8px !important;
-  }
-
-  #step3View .click-mic-button {
-    width: 56px !important;
-    height: 56px !important;
-  }
-
-  #step3View .record-caption {
-    font-size: 9.8px !important;
-  }
-
-  #step3View .record-helper,
-  #step3View .voice-status {
-    font-size: 8.4px !important;
-  }
-
-  #step3View .agent-flow-actions {
-    margin-top: 2px !important;
-  }
-
-  #step3View .agent-flow-actions .secondary-button {
-    height: 34px !important;
-    min-height: 34px !important;
-    min-width: 96px !important;
-    font-size: 9.8px !important;
+  #step3View .nova-finish-button {
+    min-width: 112px !important;
+    max-width: 128px !important;
+    height: 40px !important;
+    min-height: 40px !important;
+    padding: 0 18px !important;
+    font-size: 12px !important;
   }
 }
 
-/*
- * Viewports extremadamente bajos:
- * permitir scroll de PÁGINA, nunca un scroll interno permanente de la card.
- */
-@media (min-width: 781px) and (max-height: 639px) {
+/* =========================================================
+   TABLET — 900..1199
+   Mantener dos columnas: no tratar tablet como móvil.
+   ========================================================= */
+@media (min-width: 900px) and (max-width: 1199px) {
+  :root {
+    --onboarding-card-top: 78px;
+    --onboarding-card-bottom-gap: 14px;
+    --onboarding-side-gap: 14px;
+  }
+
+  #registerView,
+  #step2View,
+  #step3View {
+    width: 100%;
+    height: 100dvh;
+    min-height: 0 !important;
+    max-height: 100dvh;
+    box-sizing: border-box;
+    align-items: stretch;
+    overflow: hidden !important;
+    background: var(--onboarding-bg);
+  }
+
+  #registerView {
+    grid-template-columns: minmax(0, 42%) minmax(0, 58%) !important;
+  }
+
+  #step2View {
+    grid-template-columns: minmax(320px, 38%) minmax(0, 62%) !important;
+  }
+
+  #step3View.nova-page-view {
+    display: grid !important;
+    grid-template-columns: minmax(300px, 35%) minmax(0, 65%) !important;
+  }
+
+  .language-wrap {
+    top: 14px !important;
+    right: 18px !important;
+    z-index: 30;
+  }
+
+  #registerView .register-panel,
+  #step2View .flow-panel,
+  #step3View .flow-panel {
+    display: grid !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    height: 100dvh !important;
+    place-items: start center !important;
+    align-content: start !important;
+    overflow: hidden !important;
+    padding:
+      var(--onboarding-card-top)
+      var(--onboarding-side-gap)
+      var(--onboarding-card-bottom-gap)
+      var(--onboarding-side-gap) !important;
+  }
+
+  #step2View .onboarding-art-panel::before,
+  #step3View .onboarding-art-panel::before {
+    top: 72px !important;
+    width: 88% !important;
+    font-size: clamp(30px, 3.8vw, 42px) !important;
+  }
+
+  #step2View .onboarding-art-panel::after,
+  #step3View .onboarding-art-panel::after {
+    top: 160px !important;
+    width: 82% !important;
+    font-size: 12px !important;
+  }
+
+  #step2View .onboarding-art,
+  #step3View .onboarding-art {
+    width: min(94%, 540px) !important;
+    height: calc(100dvh - 238px) !important;
+  }
+
+  .onboarding-decoration-yellow {
+    top: -125px;
+    left: -150px;
+    width: 380px;
+    height: 330px;
+  }
+
+  .onboarding-decoration-pink {
+    left: -145px;
+    bottom: -140px;
+    width: 360px;
+    height: 230px;
+  }
+
+  .onboarding-sparks {
+    left: 32px;
+    top: 40dvh;
+    transform: scale(.76);
+    transform-origin: left center;
+  }
+
+  .onboarding-nova-accent-cyan,
+  .onboarding-nova-accent-violet {
+    opacity: .5;
+  }
+
+  #step2View .step2-card {
+    width: min(100%, 660px) !important;
+    min-height: 480px !important;
+    padding: 18px 20px 20px !important;
+    gap: 8px !important;
+    border-radius: 22px !important;
+    margin: 0 !important;
+  }
+
+  #step3View .nova-flow-panel {
+    min-width: 0 !important;
+  }
+
+  #step3View .nova-conversation-card {
+    width: min(100%, 660px) !important;
+    height: clamp(500px, 70dvh, 580px) !important;
+    min-height: 0 !important;
+    max-height: calc(100dvh - var(--onboarding-card-top) - var(--onboarding-card-bottom-gap)) !important;
+    margin: 0 !important;
+    padding: 15px 18px 15px !important;
+    display: grid !important;
+    grid-template-rows: auto minmax(0, 1fr) auto !important;
+    gap: 0 !important;
+    overflow: hidden !important;
+    border: 1px solid #edf1f6 !important;
+    border-radius: 24px !important;
+    background: #fff !important;
+    box-shadow: 0 18px 46px rgba(15, 43, 104, .09) !important;
+  }
+
+  #step3View .nova-stepper {
+    width: 90% !important;
+    max-width: 600px !important;
+    min-height: 54px !important;
+    margin: 0 auto !important;
+  }
+
+  #step3View .nova-stepper .step {
+    gap: 3px !important;
+    font-size: 9.5px !important;
+  }
+
+  #step3View .nova-stepper .step-circle {
+    width: 29px !important;
+    height: 29px !important;
+    font-size: 10.5px !important;
+  }
+
+  #step3View .nova-stepper::before {
+    top: 14px !important;
+  }
+
+  #step3View .nova-toolbar {
+    display: none !important;
+  }
+
+  #step3View .nova-conversation-stage {
+    min-height: 0 !important;
+    padding: 4px 12px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 5px !important;
+    overflow: hidden !important;
+    transform: none !important;
+  }
+
+  #step3View .nova-orb-zone {
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 4px !important;
+  }
+
+  #step3View .nova-orb {
+    width: 250px !important;
+    height: 250px !important;
+  }
+
+  #step3View .nova-orb .agent-orb-core {
+    width: 178px !important;
+    height: 178px !important;
+  }
+
+  #step3View .nova-name {
+    margin: 4px 0 0 !important;
+    font-size: 21px !important;
+    font-weight: 800 !important;
+    text-align: center !important;
+  }
+
+  #step3View .agent-state-label {
+    min-height: 20px !important;
+    margin: 3px 0 0 !important;
+    font-size: 12.5px !important;
+    text-align: center !important;
+  }
+
+  #step3View .nova-question-inline,
+  #step3View .nova-question-wrap,
+  #step3View .nova-question-kicker,
+  #step3View .nova-current-question {
+    display: none !important;
+  }
+
+  #step3View .nova-context-panel {
+    width: min(100%, 570px) !important;
+    min-height: 72px !important;
+    max-height: 86px !important;
+    margin: 4px auto 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 4px !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  #step3View .nova-notice {
+    width: min(440px, 100%) !important;
+    margin: 2px auto 0 !important;
+    padding: 4px 8px !important;
+    text-align: center !important;
+    line-height: 1.35 !important;
+    border: 0 !important;
+    background: transparent !important;
+  }
+
+  #step3View .nova-notice strong,
+  #step3View .nova-notice span {
+    display: block;
+  }
+
+  #step3View .nova-mic-panel {
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 4px !important;
+    border: 0 !important;
+    background: transparent !important;
+  }
+
+  #step3View .nova-mic-panel .click-mic-button,
+  #step3View .nova-mic-panel .record-caption,
+  #step3View .nova-mic-panel .record-helper {
+    display: none !important;
+  }
+
+  #step3View .nova-mic-panel[data-state="paused"] .click-mic-button,
+  #step3View .nova-mic-panel[data-state="error"] .click-mic-button,
+  #step3View .nova-mic-panel[data-state="no_speech_2"] .click-mic-button {
+    display: grid !important;
+  }
+
+  #step3View .nova-mic-panel[data-state="paused"] .record-caption,
+  #step3View .nova-mic-panel[data-state="error"] .record-caption,
+  #step3View .nova-mic-panel[data-state="no_speech_2"] .record-caption {
+    display: block !important;
+  }
+
+  #step3View .nova-confirmation,
+  #step3View .nova-confirmation.nova-keyword-rail {
+    width: min(100%, 560px) !important;
+    margin: 4px auto 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-wrap: wrap !important;
+    gap: 5px !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  #step3View .nova-notice[hidden],
+  #step3View .nova-confirmation[hidden],
+  #step3View .nova-confirmation.nova-keyword-rail[hidden] {
+    display: none !important;
+  }
+
+  #step3View .nova-actions {
+    width: 100% !important;
+    min-height: 50px !important;
+    margin: 0 !important;
+    padding: 4px 0 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+  }
+
+  #step3View .nova-finish-button {
+    width: auto !important;
+    min-width: 112px !important;
+    max-width: 126px !important;
+    height: 40px !important;
+    min-height: 40px !important;
+    margin: 0 !important;
+    padding: 0 17px !important;
+    border-radius: 13px !important;
+    font-size: 11.8px !important;
+    font-weight: 700 !important;
+  }
+
+  #step3View .nova-finish-button:disabled {
+    background: #d7deea !important;
+    color: #fff !important;
+    opacity: 1 !important;
+    box-shadow: none !important;
+  }
+
+  #step3View .nova-finish-button:not(:disabled) {
+    background: linear-gradient(100deg, #7558ef 0%, #cf4fd3 52%, #f1268d 100%) !important;
+    color: #fff !important;
+  }
+}
+
+/* =========================================================
+   ALTURA EXTREMADAMENTE BAJA — WEB/TABLET
+   ========================================================= */
+@media (min-width: 900px) and (max-height: 639px) {
   :root {
     --onboarding-card-top: 62px;
   }
@@ -542,26 +1177,18 @@
     overflow: visible !important;
   }
 
-  #registerView .register-card,
-  #step2View .flow-card,
-  #step2View .step2-card,
-  #step3View .flow-card,
-  #step3View .step3-card {
+  #step3View .nova-conversation-card {
+    height: auto !important;
+    min-height: 500px !important;
     max-height: none !important;
-  }
-
-  #step2View .step2-card {
-    min-height: 440px !important;
-    padding: 16px 22px 18px !important;
-  }
-
-  #step3View .nova-centered-stage {
-    min-height: 176px !important;
   }
 }
 
-/* Mobile: una columna y scroll normal de página. */
-@media (max-width: 780px) {
+/* =========================================================
+   MOBILE FALLBACK — < 900
+   Solo estabilidad funcional en esta etapa.
+   ========================================================= */
+@media (max-width: 899px) {
   #registerView,
   #step2View,
   #step3View {
@@ -569,7 +1196,8 @@
     min-height: 100dvh !important;
     max-height: none !important;
     grid-template-columns: 1fr !important;
-    overflow: visible !important;
+    overflow-x: hidden !important;
+    overflow-y: visible !important;
   }
 
   .language-wrap {
@@ -593,710 +1221,171 @@
   }
 
   #registerView .register-card,
-  #step2View .flow-card,
   #step2View .step2-card,
-  #step3View .flow-card,
-  #step3View .step3-card {
+  #step3View .nova-conversation-card {
     width: 100% !important;
     height: auto !important;
     min-height: 0 !important;
     max-height: none !important;
     margin: 0 auto !important;
+    box-sizing: border-box;
+  }
+
+  #step3View .nova-conversation-card {
+    min-height: calc(100dvh - 108px) !important;
+    padding: 18px 16px !important;
+    display: grid !important;
+    grid-template-rows: auto minmax(0, 1fr) auto !important;
     overflow: visible !important;
+    border: 1px solid #edf1f6 !important;
+    border-radius: 24px !important;
+    background: #fff !important;
+    box-shadow: 0 18px 46px rgba(15, 43, 104, .09) !important;
   }
 
-  #step3View .nova-centered-stage {
-    min-height: 160px !important;
-  }
-}
-
-
-/* === PREVIEW VISUAL CORRECTION — CHARACTER-ONLY HERO + COMPACT EXAMPLE === */
-/*
- * La ilustración del onboarding debe contener únicamente a los personajes.
- * El título y subtítulo siguen siendo texto real generado por CSS.
- */
-@media (min-width: 781px) {
-  #step2View .onboarding-art,
-  #step3View .onboarding-art {
-    width: min(80%, 620px) !important;
-    height: calc(100dvh - 224px) !important;
-    bottom: 0 !important;
-    object-fit: contain !important;
-    object-position: center bottom !important;
-    clip-path: none !important;
-    mix-blend-mode: normal !important;
-    filter: none !important;
+  #step3View .nova-stepper {
+    width: 100% !important;
+    min-height: 58px !important;
+    margin: 0 auto !important;
   }
 
-  /*
-   * Reproductor de ejemplo compacto:
-   * círculo de play + onda corta y fina.
-   * Sin título, "Voz" ni transcripción visible.
-   */
-  #step3View .agent-example-card {
-    justify-self: center !important;
-    display: grid !important;
-    grid-template-columns: 30px 92px !important;
+  #step3View .nova-stepper .step {
+    gap: 3px !important;
+    font-size: 9px !important;
+  }
+
+  #step3View .nova-stepper .step-label {
+    max-width: 72px !important;
+  }
+
+  #step3View .nova-stepper .step-circle {
+    width: 28px !important;
+    height: 28px !important;
+    font-size: 10px !important;
+  }
+
+  #step3View .nova-stepper::before {
+    top: 13px !important;
+  }
+
+  #step3View .nova-toolbar {
+    display: none !important;
+  }
+
+  #step3View .nova-conversation-stage {
+    min-height: 390px !important;
+    padding: 8px 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
     align-items: center !important;
-    width: max-content !important;
-    min-width: 0 !important;
-    min-height: 34px !important;
-    gap: 7px !important;
-    padding: 3px 8px 3px 4px !important;
-    border-radius: 999px !important;
-    background: #fff1f7 !important;
-    box-shadow: none !important;
+    justify-content: center !important;
+    gap: 4px !important;
+    transform: none !important;
   }
 
-  #step3View .agent-example-card .example-audio-title,
-  #step3View .agent-example-card .example-time,
-  #step3View .agent-example-card .example-quote {
-    display: none !important;
+  #step3View .nova-orb {
+    width: 210px !important;
+    height: 210px !important;
   }
 
-  #step3View .agent-example-card .example-audio-meta {
-    display: block !important;
-    min-width: 0 !important;
+  #step3View .nova-orb .agent-orb-core {
+    width: 150px !important;
+    height: 150px !important;
   }
 
-  #step3View .agent-example-card .play-example {
-    width: 30px !important;
-    height: 30px !important;
-    min-width: 30px !important;
-    min-height: 30px !important;
-    box-shadow: none !important;
+  #step3View .nova-name {
+    margin: 4px 0 0 !important;
+    font-size: 21px !important;
+    font-weight: 800 !important;
+    text-align: center !important;
   }
 
-  #step3View .agent-example-card .play-example svg {
-    width: 13px !important;
-    height: 13px !important;
-  }
-
-  #step3View .agent-example-card .example-waveform {
-    width: 92px !important;
-    min-height: 12px !important;
-    height: 12px !important;
-    gap: 2px !important;
-    overflow: hidden !important;
-  }
-
-  #step3View .agent-example-card .example-waveform span {
-    width: 1.5px !important;
-    min-width: 1.5px !important;
-    height: 6px !important;
-    border-radius: 999px !important;
-  }
-
-  #step3View .agent-example-card .example-waveform span:nth-child(3n) {
-    height: 10px !important;
-  }
-
-  #step3View .agent-example-card .example-waveform span:nth-child(2n) {
-    height: 8px !important;
-  }
-
-  #step3View .agent-example-card.playing {
-    box-shadow: 0 5px 14px rgba(241, 38, 141, .10) !important;
-  }
-}
-
-@media (max-width: 780px) {
-  #step3View .agent-example-card {
-    justify-self: center !important;
-    display: grid !important;
-    grid-template-columns: 30px 84px !important;
-    width: max-content !important;
-    min-height: 34px !important;
-    gap: 7px !important;
-    padding: 3px 8px 3px 4px !important;
-    border-radius: 999px !important;
-  }
-
-  #step3View .agent-example-card .example-audio-title,
-  #step3View .agent-example-card .example-time,
-  #step3View .agent-example-card .example-quote {
-    display: none !important;
-  }
-
-  #step3View .agent-example-card .example-waveform {
-    width: 84px !important;
-    min-height: 12px !important;
-    height: 12px !important;
-    gap: 2px !important;
-  }
-
-  #step3View .agent-example-card .example-waveform span {
-    width: 1.5px !important;
-    height: 6px !important;
-  }
-
-  #step3View .agent-example-card .play-example {
-    width: 30px !important;
-    height: 30px !important;
-    box-shadow: none !important;
-  }
-}
-
-
-/* === STEP 3 NOVA — ONBOARDING CANÓNICO === */
-/*
- * Conocerte mejor comparte la misma arquitectura 47/53 de Tus datos y
- * Tu situación. El stepper vive dentro de la card, Nova ocupa la zona
- * central y Finalizar queda compacto en el extremo inferior derecho.
- */
-
-#step3View.nova-page-view[hidden]{
-  display:none!important;
-}
-
-@media (min-width:781px){
-  #step3View.nova-page-view{
-    display:grid!important;
-    grid-template-columns:minmax(0,47%) minmax(0,53%)!important;
-    align-items:stretch;
-    width:100%;
-    height:100dvh;
-    min-height:0;
-    padding:0;
-    overflow:hidden;
-    background:var(--bg-main,#fffdf8);
-  }
-
-  #step3View .nova-flow-panel{
-    min-width:0;
-    min-height:0;
-  }
-
-  #step3View .nova-conversation-card{
-    width:min(100%,var(--onboarding-card-max-width,720px))!important;
-    height:min(600px,calc(100dvh - var(--onboarding-card-top) - var(--onboarding-card-bottom-gap)))!important;
-    min-height:520px!important;
-    max-height:calc(100dvh - var(--onboarding-card-top) - var(--onboarding-card-bottom-gap))!important;
-    margin:0;
-    padding:18px 24px 18px;
-    display:grid;
-    grid-template-rows:auto minmax(0,1fr) auto;
-    gap:0;
-    overflow:hidden;
-    border:1px solid #edf1f6;
-    border-radius:26px;
-    background:#fff;
-    box-shadow:0 18px 46px rgba(15,43,104,.09);
-    backdrop-filter:none;
-    -webkit-backdrop-filter:none;
-  }
-
-  #step3View .nova-stepper{
-    width:100%;
-    min-height:60px;
-    margin:0 auto 2px;
-    padding:0 2px;
-    align-self:start;
-  }
-
-  #step3View .nova-stepper::before{
-    top:15px;
-  }
-
-  #step3View .nova-stepper .step{
-    gap:5px;
-    font-size:11px;
-    line-height:1.2;
-  }
-
-  #step3View .nova-stepper .step-circle{
-    width:32px;
-    height:32px;
-    border-width:3px;
-    font-size:12px;
-  }
-
-  #step3View .nova-toolbar{
-    display:none;
-  }
-
-  #step3View .nova-conversation-stage{
-    width:100%;
-    min-width:0;
-    min-height:0;
-    margin:0;
-    padding:2px 6px 4px;
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    justify-content:center;
-    gap:4px;
-    overflow:visible;
-  }
-
-  #step3View .nova-orb-zone{
-    width:100%;
-    min-height:0;
-    margin:0;
-    padding:0;
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    justify-content:center;
-    gap:4px;
-  }
-
-  #step3View .nova-orb{
-    width:292px!important;
-    height:292px!important;
-    margin:0 auto!important;
-  }
-
-  #step3View .nova-orb .agent-orb-core{
-    width:206px!important;
-    height:206px!important;
-  }
-
-  #step3View .nova-name{
-    margin:4px 0 0;
-    color:var(--navy-900,#0f2b68);
-    font-size:24px;
-    line-height:1.08;
-    font-weight:800;
-    text-align:center;
-  }
-
-  #step3View .agent-state-label{
-    min-height:20px!important;
-    max-width:330px;
-    margin:3px 0 0;
-    padding:0;
-    font-size:13.5px!important;
-    line-height:1.3;
-    font-weight:600;
-    text-align:center;
+  #step3View .agent-state-label {
+    min-height: 20px !important;
+    margin: 3px 0 0 !important;
+    font-size: 13px !important;
+    text-align: center !important;
   }
 
   #step3View .nova-question-inline,
   #step3View .nova-question-wrap,
   #step3View .nova-question-kicker,
-  #step3View .nova-current-question{
-    display:none;
+  #step3View .nova-current-question {
+    display: none !important;
   }
 
-  #step3View .nova-context-panel{
-    width:min(100%,660px);
-    min-height:0;
-    margin:4px auto 0;
-    padding:0;
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    justify-content:center;
-    gap:4px;
-    border:0;
-    background:transparent;
-    box-shadow:none;
+  #step3View .nova-context-panel {
+    width: 100% !important;
+    min-height: 70px !important;
+    margin: 4px auto 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 4px !important;
+    border: 0 !important;
+    background: transparent !important;
   }
 
-  #step3View .nova-notice{
-    width:min(100%,520px);
-    margin:2px auto 0;
-    padding:6px 8px;
-    text-align:center;
-    border:0;
-    background:transparent;
-    box-shadow:none;
+  #step3View .nova-notice {
+    width: min(440px, 100%) !important;
+    text-align: center !important;
   }
 
-  #step3View .nova-notice[hidden]{
-    display:none!important;
-  }
-
-  #step3View .nova-mic-panel{
-    width:100%;
-    min-height:0;
-    margin:0;
-    padding:0;
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    justify-content:center;
-    gap:4px;
-    border:0;
-    background:transparent;
-    box-shadow:none;
-  }
-
-  #step3View .nova-mic-panel .click-mic-button,
-  #step3View .nova-mic-panel .record-caption,
-  #step3View .nova-mic-panel .record-helper{
-    display:none;
-  }
-
-  #step3View .nova-mic-panel[data-state="paused"] .click-mic-button,
-  #step3View .nova-mic-panel[data-state="error"] .click-mic-button,
-  #step3View .nova-mic-panel[data-state="no_speech_2"] .click-mic-button{
-    display:grid;
-    width:48px;
-    height:48px;
-    min-width:48px;
-    min-height:48px;
-    margin:5px auto 0;
-  }
-
-  #step3View .nova-mic-panel[data-state="paused"] .record-caption,
-  #step3View .nova-mic-panel[data-state="error"] .record-caption,
-  #step3View .nova-mic-panel[data-state="no_speech_2"] .record-caption{
-    display:block;
-    margin:3px auto 0;
-    text-align:center;
-  }
-
-  #step3View .nova-confirmation,
-  #step3View .nova-confirmation.nova-keyword-rail{
-    width:min(100%,640px);
-    min-height:0;
-    margin:5px auto 0;
-    padding:0;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    flex-wrap:wrap;
-    gap:6px;
-    border:0;
-    background:transparent;
-    box-shadow:none;
-    overflow:visible;
-  }
-
-  #step3View .nova-confirmation[hidden],
-  #step3View .nova-confirmation.nova-keyword-rail[hidden]{
-    display:none!important;
-  }
-
-  #step3View .nova-confirmation .ai-transcript,
-  #step3View .nova-confirmation .ai-auto-next{
-    display:none;
-  }
-
-  #step3View .nova-actions{
-    width:100%!important;
-    min-height:44px;
-    margin:0;
-    padding:4px 0 0;
-    display:flex!important;
-    align-items:flex-end!important;
-    justify-content:flex-end!important;
-    gap:0!important;
-    background:transparent;
-  }
-
-  #step3View .nova-finish-button{
-    flex:0 0 auto!important;
-    width:auto!important;
-    min-width:118px!important;
-    max-width:136px!important;
-    height:42px!important;
-    min-height:42px!important;
-    margin:0!important;
-    padding:0 20px!important;
-    border:0;
-    border-radius:13px;
-    font-size:12.5px;
-    font-weight:700;
-  }
-
-  #step3View .nova-finish-button:disabled{
-    background:#d7deea!important;
-    color:#fff!important;
-    opacity:1!important;
-    cursor:not-allowed!important;
-    box-shadow:none!important;
-  }
-
-  #step3View .nova-finish-button:not(:disabled){
-    background:linear-gradient(100deg,#7558ef 0%,#cf4fd3 52%,#f1268d 100%)!important;
-    color:#fff!important;
-    box-shadow:0 8px 20px rgba(216,58,141,.15)!important;
-  }
-
-  #step3View .nova-finish-button:not(:disabled):hover{
-    filter:brightness(1.035);
-  }
-}
-
-/* Laptop real: conservar continuidad con Paso 2 y mantener Nova protagonista. */
-@media (min-width:781px) and (max-height:800px){
-  #step3View .nova-conversation-card{
-    height:min(570px,calc(100dvh - var(--onboarding-card-top) - var(--onboarding-card-bottom-gap)))!important;
-    min-height:500px!important;
-    padding:15px 22px 15px;
-    border-radius:24px;
-  }
-
-  #step3View .nova-stepper{
-    min-height:54px;
-    margin-bottom:0;
-  }
-
-  #step3View .nova-stepper .step{
-    gap:3px;
-    font-size:10px;
-  }
-
-  #step3View .nova-stepper .step-circle{
-    width:29px;
-    height:29px;
-    font-size:11px;
-  }
-
-  #step3View .nova-stepper::before{
-    top:14px;
-  }
-
-  #step3View .nova-orb{
-    width:265px!important;
-    height:265px!important;
-  }
-
-  #step3View .nova-orb .agent-orb-core{
-    width:188px!important;
-    height:188px!important;
-  }
-
-  #step3View .nova-name{
-    font-size:22px;
-  }
-
-  #step3View .agent-state-label{
-    font-size:12.5px!important;
-  }
-
-  #step3View .nova-finish-button{
-    min-width:112px!important;
-    max-width:128px!important;
-    height:40px!important;
-    min-height:40px!important;
-    padding:0 18px!important;
-    font-size:12px;
-  }
-}
-
-/* Viewports desktop extremadamente bajos: scroll de página, no scroll interno de card. */
-@media (min-width:781px) and (max-height:639px){
-  #step3View.nova-page-view{
-    height:auto!important;
-    min-height:100dvh!important;
-    overflow-y:auto!important;
-    overflow-x:hidden!important;
-  }
-
-  #step3View .nova-conversation-card{
-    height:auto!important;
-    min-height:500px!important;
-    max-height:none!important;
-  }
-}
-
-/* Mobile/tablet: una sola columna, sin ilustración lateral. */
-@media (max-width:780px){
-  #step3View.nova-page-view{
-    display:block;
-    width:100%;
-    height:auto!important;
-    min-height:100dvh!important;
-    padding:0;
-    overflow:visible!important;
-    background:var(--bg-main,#fffdf8);
-  }
-
-  #step3View .nova-flow-panel{
-    display:block!important;
-    min-height:100dvh!important;
-    padding:76px 16px 32px!important;
-  }
-
-  #step3View .nova-conversation-card{
-    width:100%!important;
-    height:auto!important;
-    min-height:calc(100dvh - 108px)!important;
-    max-height:none!important;
-    margin:0 auto;
-    padding:18px 16px 18px;
-    display:grid;
-    grid-template-rows:auto minmax(0,1fr) auto;
-    gap:0;
-    overflow:visible;
-    border:1px solid #edf1f6;
-    border-radius:24px;
-    background:#fff;
-    box-shadow:0 18px 46px rgba(15,43,104,.09);
-  }
-
-  #step3View .nova-stepper{
-    width:100%;
-    min-height:58px;
-    margin:0 auto;
-    padding:0;
-  }
-
-  #step3View .nova-stepper .step{
-    gap:3px;
-    font-size:9px;
-  }
-
-  #step3View .nova-stepper .step-label{
-    max-width:72px;
-  }
-
-  #step3View .nova-stepper .step-circle{
-    width:28px;
-    height:28px;
-    font-size:10px;
-  }
-
-  #step3View .nova-stepper::before{
-    top:13px;
-  }
-
-  #step3View .nova-toolbar{
-    display:none;
-  }
-
-  #step3View .nova-conversation-stage{
-    min-height:390px;
-    padding:8px 0;
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    justify-content:center;
-    gap:4px;
-  }
-
-  #step3View .nova-orb-zone{
-    width:100%;
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    justify-content:center;
-    gap:4px;
-  }
-
-  #step3View .nova-orb{
-    width:210px!important;
-    height:210px!important;
-  }
-
-  #step3View .nova-orb .agent-orb-core{
-    width:150px!important;
-    height:150px!important;
-  }
-
-  #step3View .nova-name{
-    margin:4px 0 0;
-    font-size:21px;
-    font-weight:800;
-    text-align:center;
-  }
-
-  #step3View .agent-state-label{
-    min-height:20px!important;
-    margin:3px 0 0;
-    font-size:13px!important;
-    text-align:center;
-  }
-
-  #step3View .nova-question-inline,
-  #step3View .nova-question-wrap,
-  #step3View .nova-question-kicker,
-  #step3View .nova-current-question{
-    display:none;
-  }
-
-  #step3View .nova-context-panel{
-    width:100%;
-    margin:4px auto 0;
-    padding:0;
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    gap:4px;
-    border:0;
-    background:transparent;
-    box-shadow:none;
+  #step3View .nova-notice strong,
+  #step3View .nova-notice span {
+    display: block;
   }
 
   #step3View .nova-notice[hidden],
   #step3View .nova-confirmation[hidden],
-  #step3View .nova-confirmation.nova-keyword-rail[hidden]{
-    display:none!important;
-  }
-
-  #step3View .nova-mic-panel{
-    width:100%;
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    gap:4px;
+  #step3View .nova-confirmation.nova-keyword-rail[hidden] {
+    display: none !important;
   }
 
   #step3View .nova-mic-panel .click-mic-button,
   #step3View .nova-mic-panel .record-caption,
-  #step3View .nova-mic-panel .record-helper{
-    display:none;
+  #step3View .nova-mic-panel .record-helper {
+    display: none !important;
   }
 
   #step3View .nova-mic-panel[data-state="paused"] .click-mic-button,
   #step3View .nova-mic-panel[data-state="error"] .click-mic-button,
-  #step3View .nova-mic-panel[data-state="no_speech_2"] .click-mic-button{
-    display:grid;
+  #step3View .nova-mic-panel[data-state="no_speech_2"] .click-mic-button {
+    display: grid !important;
   }
 
-  #step3View .nova-confirmation,
-  #step3View .nova-confirmation.nova-keyword-rail{
-    width:100%;
-    margin:5px auto 0;
-    padding:0;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    flex-wrap:wrap;
-    gap:6px;
-    border:0;
-    background:transparent;
-    box-shadow:none;
+  #step3View .nova-actions {
+    width: 100% !important;
+    min-height: 44px !important;
+    margin: 0 !important;
+    padding: 8px 0 0 !important;
+    display: flex !important;
+    justify-content: flex-end !important;
+    align-items: center !important;
   }
 
-  #step3View .nova-actions{
-    width:100%!important;
-    min-height:44px;
-    margin:0;
-    padding:8px 0 0;
-    display:flex!important;
-    align-items:flex-end!important;
-    justify-content:flex-end!important;
+  #step3View .nova-finish-button {
+    width: auto !important;
+    min-width: 112px !important;
+    max-width: 128px !important;
+    height: 40px !important;
+    min-height: 40px !important;
+    margin: 0 !important;
+    padding: 0 18px !important;
+    border-radius: 13px !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
   }
 
-  #step3View .nova-finish-button{
-    flex:0 0 auto!important;
-    width:auto!important;
-    min-width:112px!important;
-    max-width:128px!important;
-    height:40px!important;
-    min-height:40px!important;
-    margin:0!important;
-    padding:0 18px!important;
-    border-radius:13px;
-    font-size:12px;
-    font-weight:700;
+  #step3View .nova-finish-button:disabled {
+    background: #d7deea !important;
+    color: #fff !important;
+    opacity: 1 !important;
+    box-shadow: none !important;
   }
 
-  #step3View .nova-finish-button:disabled{
-    background:#d7deea!important;
-    color:#fff!important;
-    opacity:1!important;
-    box-shadow:none!important;
-  }
-
-  #step3View .nova-finish-button:not(:disabled){
-    background:linear-gradient(100deg,#7558ef 0%,#cf4fd3 52%,#f1268d 100%)!important;
-    color:#fff!important;
+  #step3View .nova-finish-button:not(:disabled) {
+    background: linear-gradient(100deg, #7558ef 0%, #cf4fd3 52%, #f1268d 100%) !important;
+    color: #fff !important;
   }
 }
