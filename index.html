@@ -3997,7 +3997,7 @@ main{width:100%;height:100%}
   }
 
   async function enterStep3Agent() {
-    if (currentStep !== 'step3') return;
+    if (currentStep !== 'step3' || recordingId !== interview.activeRecordingId) return;
     refreshAgentIdentity();
     refreshInterviewUI();
 
@@ -5234,6 +5234,7 @@ main{width:100%;height:100%}
       return false;
     }
 
+    const listenToken = ++interview.listenTurnToken;
     resetAudioTurnBeforeListening();
 
     setAgentState('arming');
@@ -5246,11 +5247,12 @@ main{width:100%;height:100%}
     if (
       currentStep !== 'step3' ||
       lifecycle !== interview.lifecycleId ||
+      listenToken !== interview.listenTurnToken ||
       interview.isProcessing ||
       !interview.autoListenEnabled
     ) return false;
 
-    const started = await startRealRecording(null, { lifecycle, automatic: true });
+    const started = await startRealRecording(null, { lifecycle, listenToken, automatic: true });
 
     const ready = Boolean(
       started &&
@@ -5274,6 +5276,9 @@ main{width:100%;height:100%}
     if (currentStep !== 'step3' || interview.isProcessing) return false;
 
     const lifecycle = Number.isFinite(options.lifecycle) ? options.lifecycle : interview.lifecycleId;
+    const listenToken = Number.isFinite(options.listenToken)
+      ? options.listenToken
+      : ++interview.listenTurnToken;
 
     if (isActuallyListening()) return true;
 
@@ -5288,6 +5293,17 @@ main{width:100%;height:100%}
       interview.noSpeechReminderCount = 0;
     }
 
+    if (listenToken !== interview.listenTurnToken) return false;
+
+    const recordingId = crypto.randomUUID?.() || `voice-${Date.now()}`;
+    const recordingChunks = [];
+    interview.activeRecordingId = recordingId;
+    console.log('[NOVA AUDIO] recording_created', {
+      recordingId,
+      sessionId: interview.sessionId,
+      questionId: interview.questionId
+    });
+
     interview.recordingState = 'starting';
     interview.stopRequested = false;
     interview.stopReason = 'manual';
@@ -5300,7 +5316,12 @@ main{width:100%;height:100%}
     try {
       setVoiceStatus('Solicitando acceso al micrófono…', 'processing');
       const stream = await ensureMicrophone();
-      if (currentStep !== 'step3' || lifecycle !== interview.lifecycleId) {
+      if (
+        currentStep !== 'step3' ||
+        lifecycle !== interview.lifecycleId ||
+        listenToken !== interview.listenTurnToken ||
+        recordingId !== interview.activeRecordingId
+      ) {
         releaseMicrophone();
         interview.recordingState = 'idle';
         return false;
@@ -5315,29 +5336,37 @@ main{width:100%;height:100%}
 
       const mimeType = pickRecordingMimeType();
       interview.chunks = [];
-      interview.mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
-      novaTurnLog('recorder_created', { state: interview.mediaRecorder.state, mimeType });
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      interview.mediaRecorder = recorder;
+      novaTurnLog('recorder_created', { state: recorder.state, mimeType, recordingId });
 
-      interview.mediaRecorder.ondataavailable = event => {
+      recorder.ondataavailable = event => {
+        if (
+          recordingId !== interview.activeRecordingId ||
+          listenToken !== interview.listenTurnToken
+        ) return;
         if (event.data && event.data.size > 0) {
-          interview.chunks.push(event.data);
-          console.log('[NOVA] audio chunk bytes:', event.data.size);
+          recordingChunks.push(event.data);
+          console.log('[NOVA AUDIO] chunk', { recordingId, bytes: event.data.size });
         }
       };
-      interview.mediaRecorder.onstop = processRecordedAudio;
-      interview.mediaRecorder.onerror = event => {
+      recorder.onstop = () => {
+        if (recordingId !== interview.activeRecordingId) return;
+        processRecordedAudio(recordingId, recorder, recordingChunks);
+      };
+      recorder.onerror = event => {
         console.error('[NOVA AUDIO]', event?.error || event);
       };
 
-      interview.mediaRecorder.start();
+      recorder.start();
 
-      if (interview.mediaRecorder.state !== 'recording') {
+      if (recorder.state !== 'recording') {
         throw microphoneError('MEDIA_RECORDER_NOT_RECORDING', 'No pude iniciar la grabación del micrófono.');
       }
 
       interview.startedAt = Date.now();
       interview.recordingState = 'recording';
-      novaTurnLog('recorder_started', { state: interview.mediaRecorder.state });
+      novaTurnLog('recorder_started', { state: recorder.state, recordingId });
 
       recordAnswerButton?.classList.add('recording');
       recordAnswerButton?.setAttribute('aria-pressed', 'true');
@@ -5443,10 +5472,18 @@ main{width:100%;height:100%}
     }
   }
 
-  async function processRecordedAudio() {
-    const recorder = interview.mediaRecorder;
-    const type = recorder?.mimeType || interview.chunks[0]?.type || 'audio/webm';
-    const blob = new Blob(interview.chunks, { type });
+  async function processRecordedAudio(recordingId, recorder, chunks = []) {
+    if (
+      !recordingId ||
+      recordingId !== interview.activeRecordingId ||
+      interview.processedRecordingIds.has(recordingId)
+    ) {
+      console.warn('[NOVA AUDIO] stale_or_duplicate_recording_ignored', { recordingId });
+      return;
+    }
+
+    const type = recorder?.mimeType || chunks[0]?.type || 'audio/webm';
+    const blob = new Blob(chunks, { type });
     const durationMs = interview.lastRecordingDurationMs || Math.max(0, Date.now() - interview.startedAt);
 
     interview.chunks = [];
@@ -5454,7 +5491,8 @@ main{width:100%;height:100%}
     interview.recordingState = 'idle';
     releaseMicrophone();
 
-    console.log('[NOVA] audio ready', {
+    console.log('[NOVA AUDIO] blob_ready', {
+      recordingId,
       bytes: blob.size,
       mimeType: blob.type,
       durationMs
@@ -5491,7 +5529,8 @@ main{width:100%;height:100%}
     setVoiceStatus('Analizando…', 'processing');
 
     const queueItem = {
-      id: crypto.randomUUID?.() || `voice-${Date.now()}`,
+      id: recordingId,
+      recordingId,
       sessionId: interview.sessionId,
       questionId: interview.questionId,
       question: interview.currentQuestion,
