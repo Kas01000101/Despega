@@ -103,7 +103,9 @@
   }
   function trackEvent(eventType,target){
     try{
-      var form=new FormData();form.append('mode','chat');form.append('session_id',onboardingSessionId());form.append('chat_session_id',state.sessionId);form.append('event_type',eventType);form.append('event_target',String(target||'').slice(0,120));
+      var last=state.messages.slice().reverse().find(function(m){return m.role==='assistant'&&m.replyTo;});
+      if(!last||!last.replyTo)return;
+      var form=new FormData();form.append('mode','chat');form.append('session_id',onboardingSessionId());form.append('chat_session_id',state.sessionId);form.append('event_type',eventType);form.append('event_target',String(target||'').slice(0,120));form.append('event_message_id',String(last.replyTo));
       fetch(ENDPOINT,{method:'POST',headers:{apikey:SUPABASE_KEY,Authorization:'Bearer '+SUPABASE_KEY},body:form}).catch(function(){});
     }catch(_){}
   }
