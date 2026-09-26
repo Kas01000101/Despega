@@ -40,7 +40,7 @@
   function panel(){return document.getElementById('ddNovaPanel');}
   function launcher(){return document.getElementById('ddNovaLauncher');}
   function chatMarkup(){
-    return '<div class="dd-nova-head"><div><strong>Nova</strong><span class="nova-chat-status" id="novaChatStatus">Lista para ayudarte</span></div><div class="nova-chat-head-actions"><button class="nova-chat-new" type="button" title="Nueva conversación" aria-label="Nueva conversación">↻</button><button class="dd-nova-close" type="button" aria-label="Cerrar">×</button></div></div>'+
+    return '<div class="dd-nova-head"><div class="nova-chat-identity"><span class="nova-chat-avatar" aria-hidden="true"><i></i><i></i><b></b></span><div><strong>Nova</strong><small>Tu guía en DESPEGA</small><span class="nova-chat-status" id="novaChatStatus">Lista para ayudarte</span></div></div><div class="nova-chat-head-actions"><button class="nova-chat-new" type="button" title="Nueva conversación" aria-label="Nueva conversación">↻</button><button class="dd-nova-close" type="button" aria-label="Cerrar">×</button></div></div>'+
       '<div class="nova-chat-messages" id="novaChatMessages" role="log" aria-live="polite"></div>'+
       '<div class="nova-chat-quick" id="novaChatQuick"><button type="button" data-chat-prompt="¿Qué hago ahora?">¿Qué hago ahora?</button><button type="button" data-chat-prompt="Explícame mi ruta actual.">Ver mi ruta</button><button type="button" data-chat-prompt="Muéstrame oportunidades verificadas que pueda explorar.">Buscar oportunidades</button><button type="button" data-chat-prompt="¿Cómo voy y qué he completado?">Mi progreso</button></div>'+
       '<form class="nova-chat-form" id="novaChatForm"><label class="sr-only" for="novaChatInput">Escribe a Nova</label><textarea id="novaChatInput" maxlength="1600" rows="1" placeholder="Escribe tu pregunta..."></textarea><button id="novaChatSend" type="submit" aria-label="Enviar mensaje">➜</button></form>'+
@@ -58,14 +58,14 @@
     p.querySelector('#novaChatForm').addEventListener('submit',function(e){e.preventDefault();sendFromInput();});
     p.querySelector('#novaChatInput').addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendFromInput();}});
     Array.prototype.forEach.call(p.querySelectorAll('[data-chat-prompt]'),function(btn){btn.addEventListener('click',function(){sendMessage(btn.getAttribute('data-chat-prompt')||'');});});
-    if(!state.messages.length){state.messages=[{id:'welcome',role:'assistant',content:welcomeMessage(),actions:[],cards:[],motivation:''}];save();}
+    if(!state.messages.length){state.messages=[{id:'welcome',role:'assistant',content:welcomeMessage(),actions:[],cards:[],motivation:''}];save();}if(!sessionStorage.getItem('despegaNovaHintSeen')){setTimeout(function(){var fab=launcher();if(!fab)return;fab.classList.add('has-message');fab.setAttribute('data-nova-hint','¿Quieres que te ayude a revisar tu ruta?');setTimeout(function(){fab.classList.remove('has-message');fab.removeAttribute('data-nova-hint');},4200);sessionStorage.setItem('despegaNovaHintSeen','true');},3200);}
     render();
-    var l=launcher();if(l){l.setAttribute('aria-controls','ddNovaPanel');l.setAttribute('aria-expanded','false');}
+    var l=launcher();if(l){l.setAttribute('aria-controls','ddNovaPanel');l.setAttribute('aria-expanded','false');l.addEventListener('click',function(){l.classList.remove('has-message');});}
     new MutationObserver(function(){var ll=launcher();if(ll)ll.setAttribute('aria-expanded',String(p.classList.contains('is-open')));}).observe(p,{attributes:true,attributeFilter:['class']});
   }
   function newConversation(){state.sessionId=(crypto.randomUUID?crypto.randomUUID():'chat-'+Date.now());state.messages=[];state.lastFailed=null;localStorage.setItem(STORAGE_SESSION,state.sessionId);state.messages.push({id:'welcome-'+Date.now(),role:'assistant',content:'Nueva conversación iniciada. Tu perfil, ruta y oportunidades guardadas no se modificaron.',actions:[],cards:[],motivation:''});save();render();}
   function sendFromInput(){var input=document.getElementById('novaChatInput');if(!input)return;var msg=input.value.trim();if(!msg)return;input.value='';sendMessage(msg);}
-  function setBusy(busy,label){state.isSending=busy;var send=document.getElementById('novaChatSend'),input=document.getElementById('novaChatInput'),status=document.getElementById('novaChatStatus');if(send)send.disabled=busy;if(input)input.disabled=busy;if(status)status.textContent=label||(busy?'Pensando…':'Lista para ayudarte');}
+  function setBusy(busy,label){state.isSending=busy;var send=document.getElementById('novaChatSend'),input=document.getElementById('novaChatInput'),status=document.getElementById('novaChatStatus'),fab=launcher();if(send)send.disabled=busy;if(input)input.disabled=busy;if(status)status.textContent=label||(busy?'Pensando…':'Lista para ayudarte');if(fab){fab.classList.toggle('is-thinking',busy);if(!busy)fab.classList.remove('has-message');}}
   function opportunityById(id){var api=dashboardApi();return api&&api.getOpportunity?api.getOpportunity(id):null;}
   function routeById(id){var api=dashboardApi(),route=api&&api.getRoute?api.getRoute():null;return route&&Array.isArray(route.steps)?route.steps.find(function(s){return s.id===id;}):null;}
   function opportunityCardHtml(card){
