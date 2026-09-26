@@ -15,10 +15,10 @@ const RATE_LIMIT_PER_MINUTE = 20;
 const MODEL = Deno.env.get("GEMINI_MODEL") || "gemini-3.8-flash";
 const FALLBACK_MODEL = Deno.env.get("GEMINI_FALLBACK_MODEL") || "gemini-3.5-flash-lite";
 const GEMINI_TIMEOUTS = Object.freeze({
-  transcriptionFast: 7000,
-  transcriptionFallback: 9000,
+  transcriptionFast: 6000,
+  transcriptionFallback: 8000,
   analysisFast: 5000,
-  analysisFallback: 6500,
+  analysisFallback: 6000,
 });
 const GEMINI_RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
 
@@ -712,16 +712,23 @@ Deno.serve(async (req: Request) => {
     };
 
     const form = await req.formData();
-    const audio = form.get("audio");
+    const modeRaw = text(form.get("mode"), 32).toLowerCase();
+    const mode = modeRaw === "transcribe" || modeRaw === "analyze" ? modeRaw : "full";
+    const transcriptOverride = text(form.get("transcript_override"), 3000);
+    const audioEntry = form.get("audio");
+    const audio = audioEntry instanceof File ? audioEntry : null;
 
-    if (!(audio instanceof File)) {
+    if (mode !== "analyze" && !audio) {
       return json({ error: "AUDIO_REQUIRED" }, 400, origin);
     }
-    if (!audio.type.startsWith("audio/")) {
+    if (audio && !audio.type.startsWith("audio/")) {
       return json({ error: "INVALID_AUDIO_TYPE" }, 400, origin);
     }
-    if (audio.size <= 0 || audio.size > MAX_AUDIO_BYTES) {
+    if (audio && (audio.size <= 0 || audio.size > MAX_AUDIO_BYTES)) {
       return json({ error: "INVALID_AUDIO_SIZE", maxBytes: MAX_AUDIO_BYTES }, 400, origin);
+    }
+    if (mode === "analyze" && !transcriptOverride) {
+      return json({ error: "TRANSCRIPT_REQUIRED", phase: "analysis" }, 400, origin);
     }
 
     const sessionId = text(form.get("session_id"), 120);
@@ -771,17 +778,22 @@ Deno.serve(async (req: Request) => {
       const value = String(rawDimensionStatus[dimension] || "pending").toLowerCase();
       dimensionStatus[dimension] = value === "covered" || value === "skipped" ? value : "pending";
     }
-    const bytes = new Uint8Array(await audio.arrayBuffer());
-    const audioBase64 = toBase64(bytes);
+    let transcript = mode === "analyze" ? transcriptOverride : "";
+    let speechDetected = mode === "analyze" ? Boolean(transcriptOverride) : false;
+    let transcriptionQuality = mode === "analyze" ? "good" : "uncertain";
 
-    console.log("Nova transcription start", JSON.stringify({
-      sessionId,
-      recordingId,
-      bytes: audio.size,
-      audioType: audio.type,
-    }));
+    if (mode !== "analyze") {
+        const bytes = new Uint8Array(await audio!.arrayBuffer());
+      const audioBase64 = toBase64(bytes);
 
-    const transcriptionPrompt = `
+      console.log("Nova transcription start", JSON.stringify({
+        sessionId,
+        recordingId,
+        bytes: audio!.size,
+        audioType: audio!.type,
+      }));
+
+      const transcriptionPrompt = `
 Transcribe literalmente este audio hablado en español.
 
 REGLAS OBLIGATORIAS:
@@ -799,96 +811,117 @@ REGLAS OBLIGATORIAS:
 Devuelve únicamente el JSON solicitado por el schema.
 `;
 
-    const transcriptionStartedAt = performance.now();
-    const transcriptionGemini = await callGeminiResilient({
-      apiKey: geminiKey,
-      prompt: transcriptionPrompt,
-      responseSchema: transcriptionSchema,
-      audioType: audio.type || "audio/webm",
-      audioBase64,
-      temperature: 0,
-      phase: "transcription",
-    });
+      const transcriptionStartedAt = performance.now();
+      const transcriptionGemini = await callGeminiResilient({
+        apiKey: geminiKey,
+        prompt: transcriptionPrompt,
+        responseSchema: transcriptionSchema,
+        audioType: audio!.type || "audio/webm",
+        audioBase64,
+        temperature: 0,
+        phase: "transcription",
+      });
 
-    timing.transcription_ms = Math.round(performance.now() - transcriptionStartedAt);
-    timing.transcription_attempt_1_ms = Number(transcriptionGemini.attempts?.[0]?.duration_ms || 0);
-    timing.transcription_attempt_2_ms = Number(transcriptionGemini.attempts?.[1]?.duration_ms || 0);
-    timing.transcription_model = String(transcriptionGemini.model || "");
-    timing.transcription_fallback_used = Boolean(transcriptionGemini.fallbackUsed);
+      timing.transcription_ms = Math.round(performance.now() - transcriptionStartedAt);
+      timing.transcription_attempt_1_ms = Number(transcriptionGemini.attempts?.[0]?.duration_ms || 0);
+      timing.transcription_attempt_2_ms = Number(transcriptionGemini.attempts?.[1]?.duration_ms || 0);
+      timing.transcription_model = String(transcriptionGemini.model || "");
+      timing.transcription_fallback_used = Boolean(transcriptionGemini.fallbackUsed);
 
-    if (!transcriptionGemini.response?.ok) {
+      if (!transcriptionGemini.response?.ok) {
+        return json({
+          error: "TRANSCRIPTION_TEMPORARILY_UNAVAILABLE",
+          message: "No pude transcribir el audio en este momento. Intenta otra vez.",
+          retryable: true,
+          recording_id: recordingId,
+          phase: "transcription",
+          timing,
+        }, 503, origin);
+      }
+
+      const transcriptionOutput =
+        transcriptionGemini.payload?.candidates?.[0]?.content?.parts
+          ?.map((part: any) => part?.text || "")
+          .join("")
+          .trim() || "";
+
+      let transcription: Record<string, any>;
+      try {
+        transcription = JSON.parse(transcriptionOutput);
+      } catch {
+        console.error("Invalid transcription JSON", transcriptionOutput.slice(0, 500));
+        return json({ error: "INVALID_TRANSCRIPTION_JSON", retryable: true }, 502, origin);
+      }
+
+        transcript = text(transcription.transcript, 3000);
+        speechDetected = Boolean(transcription.speech_detected);
+        transcriptionQuality = ["good", "uncertain", "inaudible"].includes(String(transcription.quality))
+        ? String(transcription.quality)
+        : "uncertain";
+
+      console.log("Nova transcription result", JSON.stringify({
+        sessionId,
+        recordingId,
+        speechDetected,
+        transcriptionQuality,
+        transcriptLength: transcript.length,
+      }));
+
+      if (!speechDetected) {
+        return json({
+          error: "NO_SPEECH_DETECTED",
+          message: "No detecté una respuesta hablada. Inténtalo otra vez.",
+          retryable: true,
+          recording_id: recordingId,
+          transcript: "",
+          transcription_quality: transcriptionQuality,
+          speech_detected: false,
+        }, 422, origin);
+      }
+
+      if (!transcript || transcriptionQuality === "inaudible") {
+        return json({
+          error: "AUDIO_INAUDIBLE",
+          message: "No pude entender el audio con suficiente claridad. Inténtalo otra vez.",
+          retryable: true,
+          recording_id: recordingId,
+          transcript,
+          transcription_quality: "inaudible",
+          speech_detected: true,
+        }, 422, origin);
+      }
+
+      if (transcriptionQuality !== "good") {
+        return json({
+          error: "TRANSCRIPTION_UNCERTAIN",
+          message: "Escuché tu voz, pero no tengo suficiente certeza sobre lo que dijiste. Inténtalo otra vez.",
+          retryable: true,
+          recording_id: recordingId,
+          transcript,
+          transcription_quality: transcriptionQuality,
+          speech_detected: true,
+        }, 422, origin);
+      }
+
+
+    } else {
+      console.log("Nova analysis-only request", JSON.stringify({
+        sessionId,
+        recordingId,
+        transcriptLength: transcript.length,
+      }));
+    }
+
+    if (mode === "transcribe") {
+      timing.total_ms = Math.round(performance.now() - requestStartedAt);
       return json({
-        error: "TRANSCRIPTION_TEMPORARILY_UNAVAILABLE",
-        message: "No pude transcribir el audio en este momento. Intenta otra vez.",
-        retryable: true,
+        transcript,
+        transcription_quality: transcriptionQuality,
+        speech_detected: speechDetected,
         recording_id: recordingId,
         phase: "transcription",
         timing,
-      }, 503, origin);
-    }
-
-    const transcriptionOutput =
-      transcriptionGemini.payload?.candidates?.[0]?.content?.parts
-        ?.map((part: any) => part?.text || "")
-        .join("")
-        .trim() || "";
-
-    let transcription: Record<string, any>;
-    try {
-      transcription = JSON.parse(transcriptionOutput);
-    } catch {
-      console.error("Invalid transcription JSON", transcriptionOutput.slice(0, 500));
-      return json({ error: "INVALID_TRANSCRIPTION_JSON", retryable: true }, 502, origin);
-    }
-
-    const transcript = text(transcription.transcript, 3000);
-    const speechDetected = Boolean(transcription.speech_detected);
-    const transcriptionQuality = ["good", "uncertain", "inaudible"].includes(String(transcription.quality))
-      ? String(transcription.quality)
-      : "uncertain";
-
-    console.log("Nova transcription result", JSON.stringify({
-      sessionId,
-      recordingId,
-      speechDetected,
-      transcriptionQuality,
-      transcriptLength: transcript.length,
-    }));
-
-    if (!speechDetected) {
-      return json({
-        error: "NO_SPEECH_DETECTED",
-        message: "No detecté una respuesta hablada. Inténtalo otra vez.",
-        retryable: true,
-        recording_id: recordingId,
-        transcript: "",
-        transcription_quality: transcriptionQuality,
-        speech_detected: false,
-      }, 422, origin);
-    }
-
-    if (!transcript || transcriptionQuality === "inaudible") {
-      return json({
-        error: "AUDIO_INAUDIBLE",
-        message: "No pude entender el audio con suficiente claridad. Inténtalo otra vez.",
-        retryable: true,
-        recording_id: recordingId,
-        transcript,
-        transcription_quality: "inaudible",
-        speech_detected: true,
-      }, 422, origin);
-    }
-
-    if (transcriptionQuality !== "good") {
-      return json({
-        error: "TRANSCRIPTION_UNCERTAIN",
-        message: "Escuché tu voz, pero no tengo suficiente certeza sobre lo que dijiste. Inténtalo otra vez.",
-        retryable: true,
-        recording_id: recordingId,
-        transcript,
-        transcription_quality: transcriptionQuality,
-        speech_detected: true,
-      }, 422, origin);
+      }, 200, origin);
     }
 
     const prompt = `
@@ -1033,6 +1066,9 @@ Devuelve solo el JSON solicitado por el schema.
         retryable: true,
         recording_id: recordingId,
         phase: "analysis",
+        transcript,
+        transcription_quality: transcriptionQuality,
+        speech_detected: true,
         timing,
       }, 503, origin);
     }
@@ -1246,6 +1282,7 @@ Devuelve solo el JSON solicitado por el schema.
       transcription_quality: transcriptionQuality,
       speech_detected: true,
       persistence_ok: persistenceOk,
+      phase: "analysis",
       timing,
     }, 200, origin);
   } catch (error) {

@@ -3279,8 +3279,8 @@ main{width:100%;height:100%}
     // Cuando despliegues Kokoro, coloca aquí su endpoint, p. ej. https://tts.example.com/synthesize
     kokoroTtsUrl: '',
     maxRecordingSeconds: 30,
-    requestTimeoutMs: 32000,
-    processingWatchdogMs: 35000,
+    requestTimeoutMs: 40000,
+    processingWatchdogMs: 43000,
     minRecordingMs: 800,
     minAudioBytes: 256,
     vadCalibrationMs: 400,
@@ -3975,6 +3975,11 @@ main{width:100%;height:100%}
     })(),
     dimensionStatus: loadDimensionStatus(),
     pendingResult: null,
+    pendingTranscript: '',
+    pendingAnalysisItem: null,
+    processingPhase: 'idle',
+    mainQuestionsAsked: Math.max(1, Number(localStorage.getItem('despegaInterviewMainQuestions') || 1)),
+    clarificationsAsked: Math.max(0, Number(localStorage.getItem('despegaInterviewClarifications') || 0)),
     mediaRecorder: null,
     mediaStream: null,
     chunks: [],
@@ -4084,19 +4089,39 @@ main{width:100%;height:100%}
       helper: ''
     },
     thinking: {
-      label: 'Analizando…',
+      label: 'Entendiendo tu respuesta…',
       caption: '',
       helper: ''
     },
     processing: {
-      label: 'Analizando…',
+      label: 'Entendiendo tu respuesta…',
       caption: '',
       helper: ''
+    },
+    processing_transcription: {
+      label: 'Procesando tu voz…',
+      caption: 'Procesando tu voz…',
+      helper: 'Mantén esta ventana abierta.'
+    },
+    processing_analysis: {
+      label: 'Entendiendo tu respuesta…',
+      caption: 'Entendiendo tu respuesta…',
+      helper: 'Ya recibí tu voz; ahora estoy organizando lo que dijiste.'
     },
     recovering: {
       label: 'Reintentando…',
       caption: 'Estoy recuperando tu turno',
-      helper: 'No necesitas repetir todavía.'
+      helper: 'Tu progreso sigue guardado.'
+    },
+    recovering_transcription: {
+      label: 'Reintentando escucha…',
+      caption: 'No pude procesar esta respuesta',
+      helper: 'Tu progreso sigue guardado; volveré a escucharte.'
+    },
+    recovering_analysis: {
+      label: 'Reintentando análisis…',
+      caption: 'Tu voz ya fue entendida',
+      helper: 'No necesitas repetir tu respuesta.'
     },
     confirming: {
       label: '',
@@ -4258,8 +4283,15 @@ main{width:100%;height:100%}
     if (!noticeState) clearNovaNotice();
     if (!detectedState) clearDetectedTurn();
 
+    const visualState = [
+      'processing_transcription',
+      'processing_analysis',
+      'recovering_transcription',
+      'recovering_analysis'
+    ].includes(state) ? 'processing' : state;
+
     if (agentOrb) {
-      agentOrb.dataset.state = state;
+      agentOrb.dataset.state = visualState;
       agentOrb.setAttribute('aria-label', ui.label || 'Nova');
     }
 
@@ -4268,7 +4300,7 @@ main{width:100%;height:100%}
     if (recordHelper) recordHelper.textContent = ui.helper || '';
 
     if (micPanel) {
-      micPanel.dataset.state = state;
+      micPanel.dataset.state = visualState;
       micPanel.hidden = !(listeningState || manualState);
     }
 
@@ -4323,7 +4355,7 @@ main{width:100%;height:100%}
 
   function canFinishInterview() {
     const resolved = resolvedDimensionCount();
-    const hardCapReached = interview.answersCount >= DESPEGA_AI.maxInterviewQuestions;
+    const hardCapReached = interview.mainQuestionsAsked >= DESPEGA_AI.maxInterviewQuestions;
     const aiComplete = Boolean(interview.pendingResult?.interview_complete || interview.pendingResult?.should_finish);
     return resolved >= 3 && (resolved === NOVA_CORE_DIMENSIONS.length || hardCapReached || aiComplete);
   }
@@ -4543,11 +4575,14 @@ main{width:100%;height:100%}
     interview.processingWatchdog = null;
   }
 
-  function setInterviewBusy(busy) {
+  function setInterviewBusy(busy, phase = '') {
     interview.isProcessing = busy;
+    interview.processingPhase = busy ? (phase || interview.processingPhase || 'analysis') : 'idle';
     clearProcessingWatchdog();
 
     if (busy) {
+      if (interview.processingPhase === 'transcription') setAgentState('processing_transcription');
+      else if (interview.processingPhase === 'analysis') setAgentState('processing_analysis');
       const lifecycle = interview.lifecycleId;
       interview.processingWatchdog = setTimeout(() => {
         if (
@@ -4770,6 +4805,8 @@ main{width:100%;height:100%}
     const keys = [
       'despegaInterviewAnswers',
       'despegaInterviewUsefulAnswers',
+      'despegaInterviewMainQuestions',
+      'despegaInterviewClarifications',
       'despegaCurrentQuestionId',
       'despegaCurrentQuestion',
       'despegaCurrentExample',
@@ -4788,6 +4825,11 @@ main{width:100%;height:100%}
     interview.sessionId = sessionId;
     interview.answersCount = 0;
     interview.usefulAnswersCount = 0;
+    interview.mainQuestionsAsked = 1;
+    interview.clarificationsAsked = 0;
+    interview.pendingTranscript = '';
+    interview.pendingAnalysisItem = null;
+    interview.processingPhase = 'idle';
     interview.questionId = 'goal';
     interview.currentQuestion = INITIAL_QUESTION;
     interview.currentExample = INITIAL_EXAMPLE;
@@ -4813,6 +4855,8 @@ main{width:100%;height:100%}
     interview.processedRecordingIds.clear();
 
     localStorage.setItem('despegaInterviewSession', sessionId);
+    localStorage.setItem('despegaInterviewMainQuestions', '1');
+    localStorage.setItem('despegaInterviewClarifications', '0');
     localStorage.setItem('despegaCurrentQuestionId', interview.questionId);
     localStorage.setItem('despegaCurrentQuestion', interview.currentQuestion);
     localStorage.setItem('despegaCurrentExample', interview.currentExample);
@@ -4907,6 +4951,13 @@ main{width:100%;height:100%}
       }
 
       const mapped = NOVA_QUESTIONS[nextDimension];
+      if (nextDimension !== interview.questionId) {
+        interview.mainQuestionsAsked = Math.min(
+          DESPEGA_AI.maxInterviewQuestions,
+          interview.mainQuestionsAsked + 1
+        );
+        localStorage.setItem('despegaInterviewMainQuestions', String(interview.mainQuestionsAsked));
+      }
       interview.questionId = nextDimension;
       interview.currentQuestion = String(result?.next_question || '').trim() || mapped.question;
       interview.currentExample = String(result?.example_response || '').trim() || mapped.example;
@@ -5317,8 +5368,14 @@ main{width:100%;height:100%}
     }, DESPEGA_AI.requestTimeoutMs);
 
     const form = new FormData();
-    form.append('audio', audioBlob, `despega-${Date.now()}.${audioBlob.type.includes('ogg') ? 'ogg' : audioBlob.type.includes('mp4') ? 'm4a' : 'webm'}`);
     const requestMeta = metadata || {};
+    if (audioBlob instanceof Blob) {
+      form.append('audio', audioBlob, `despega-${Date.now()}.${audioBlob.type.includes('ogg') ? 'ogg' : audioBlob.type.includes('mp4') ? 'm4a' : 'webm'}`);
+    }
+    form.append('mode', requestMeta.mode || 'full');
+    if (requestMeta.transcriptOverride) {
+      form.append('transcript_override', String(requestMeta.transcriptOverride));
+    }
     form.append('session_id', requestMeta.sessionId || interview.sessionId);
     form.append('question_id', requestMeta.questionId || interview.questionId);
     form.append('question', requestMeta.question || interview.currentQuestion);
@@ -5337,13 +5394,15 @@ main{width:100%;height:100%}
     console.log('[NOVA AUDIO] api_send', {
       recordingId: requestMeta.recordingId || requestMeta.id || '',
       questionId: requestMeta.questionId || interview.questionId,
-      bytes: audioBlob.size,
+      bytes: audioBlob instanceof Blob ? audioBlob.size : 0,
+      mode: requestMeta.mode || 'full',
       usefulAnswers: Number.isFinite(requestMeta.usefulAnswersCount) ? requestMeta.usefulAnswersCount : interview.usefulAnswersCount
     });
     novaTurnLog('api_send', {
       recordingId: requestMeta.recordingId || requestMeta.id || '',
       questionId: requestMeta.questionId || interview.questionId,
-      bytes: audioBlob.size
+      bytes: audioBlob instanceof Blob ? audioBlob.size : 0,
+      mode: requestMeta.mode || 'full'
     });
 
     try {
@@ -5357,6 +5416,10 @@ main{width:100%;height:100%}
       if (!response.ok) {
         const error = new Error(payload.message || payload.error || `Backend ${response.status}`);
         error.code = payload.code || payload.error || `HTTP_${response.status}`;
+        error.phase = String(payload.phase || '');
+        error.transcript = String(payload.transcript || '');
+        error.retryable = Boolean(payload.retryable);
+        error.timing = payload.timing || null;
         throw error;
       }
       console.log('[NOVA] Gemini result', payload);
@@ -5405,20 +5468,20 @@ main{width:100%;height:100%}
     interview.noSpeechReminderCount = 0;
     setInterviewBusy(false);
     setAgentEmotion('supportive');
-    setAgentState('recovering');
+    setAgentState(error?.phase === 'transcription' ? 'recovering_transcription' : 'recovering');
     showNovaNotice(
-      'Tuve un problema procesando tu respuesta',
-      'No se perdió la conversación. Nova volverá a escucharte.',
+      'No pude procesar esta respuesta',
+      'Tu progreso sigue guardado. Voy a escucharte nuevamente.',
       'supportive'
     );
-    setVoiceStatus('Reintentando la conversación…', 'processing');
+    setVoiceStatus('Recuperando la conversación…', 'processing');
     novaTurnLog('frontend_recovery_started', {
       recordingId,
       code: String(error?.code || error?.name || 'UNKNOWN')
     });
 
     await speakText(
-      'Tuve un problema al procesar tu respuesta. Cuando quieras, intentémoslo nuevamente.',
+      'Tu progreso sigue guardado. No pude procesar esta respuesta; necesito escucharte una vez más.',
       false
     ).catch((speechError) => console.warn('[NOVA RECOVERY] recovery_tts_failed', speechError));
 
@@ -6251,6 +6314,11 @@ main{width:100%;height:100%}
     event?.preventDefault();
     if (currentStep !== 'step3' || interview.isProcessing) return;
 
+    if (interview.pendingTranscript && interview.pendingAnalysisItem) {
+      await retryPendingAnalysis();
+      return;
+    }
+
     if (interview.recordingState === 'recording') {
       stopRealRecording('manual');
       return;
@@ -6259,6 +6327,84 @@ main{width:100%;height:100%}
     // starting/stopping ya no obliga a un segundo clic: se cancela el
     // lifecycle anterior y el mismo gesto inicia la nueva escucha.
     await restartNovaListening(event, 'mic_click');
+  }
+
+  async function retryAnalysisFromTranscript(queueItem, transcript, processingLifecycle, recordingId, source = 'analysis_retry') {
+    if (
+      !transcript ||
+      currentStep !== 'step3' ||
+      processingLifecycle !== interview.lifecycleId
+    ) return null;
+
+    interview.pendingTranscript = transcript;
+    interview.pendingAnalysisItem = queueItem;
+    setInterviewBusy(true, 'analysis');
+    setAgentState('recovering_analysis');
+    setVoiceStatus('Reintentando el análisis…', 'processing');
+    novaTurnLog('analysis_retry_started', { recordingId, source });
+
+    try {
+      const result = await callDespegaAI(null, {
+        ...queueItem,
+        mode: 'analyze',
+        transcriptOverride: transcript
+      });
+      novaTurnLog('analysis_retry_succeeded', { recordingId, source });
+      interview.pendingTranscript = '';
+      interview.pendingAnalysisItem = null;
+      return result;
+    } catch (retryError) {
+      novaTurnLog('analysis_retry_failed', {
+        recordingId,
+        source,
+        code: retryError?.code || retryError?.name || 'UNKNOWN'
+      });
+      throw retryError;
+    } finally {
+      setInterviewBusy(false);
+    }
+  }
+
+  async function retryPendingAnalysis() {
+    const transcript = String(interview.pendingTranscript || '').trim();
+    const queueItem = interview.pendingAnalysisItem;
+    if (!transcript || !queueItem || interview.isProcessing) return false;
+
+    interview.autoListenEnabled = false;
+    const lifecycle = interview.lifecycleId;
+    const recordingId = queueItem.recordingId || queueItem.id || '';
+    try {
+      const result = await retryAnalysisFromTranscript(
+        queueItem,
+        transcript,
+        lifecycle,
+        recordingId,
+        'manual_analysis_retry'
+      );
+      if (!result || currentStep !== 'step3' || lifecycle !== interview.lifecycleId) return false;
+      const accepted = await receiveAIResult(
+        result,
+        recordingId,
+        queueItem.questionId,
+        lifecycle
+      );
+      if (accepted) {
+        interview.processedRecordingIds.add(recordingId);
+        interview.pendingTranscript = '';
+        interview.pendingAnalysisItem = null;
+      }
+      return accepted;
+    } catch (error) {
+      setAgentState('paused');
+      showNovaNotice(
+        'Aún no pude analizar tu respuesta',
+        'Tu voz ya quedó transcrita. Toca el micrófono para reintentar el análisis; no necesitas repetirla.',
+        'paused'
+      );
+      setVoiceStatus('Análisis pendiente. Tu respuesta hablada no se perdió.', 'error');
+      if (recordAnswerButton) recordAnswerButton.disabled = false;
+      return false;
+    }
   }
 
   async function processRecordedAudio(recordingId, recorder, chunks = []) {
@@ -6313,10 +6459,9 @@ main{width:100%;height:100%}
       return;
     }
 
-    setInterviewBusy(true);
-    setAgentState('processing');
+    setInterviewBusy(true, 'transcription');
     novaTurnLog('processing_start', { bytes: blob.size, durationMs });
-    setVoiceStatus('Analizando…', 'processing');
+    setVoiceStatus('Procesando tu voz…', 'processing');
 
     const queueItem = {
       id: recordingId,
@@ -6360,22 +6505,55 @@ main{width:100%;height:100%}
     interview.isSendingAudio = true;
     interview.activeRequestRecordingId = recordingId;
 
+    let acceptedTranscript = '';
+
     try {
       console.log('[NOVA AUDIO] transcription_start', { recordingId });
-      novaPerfMark('api_start', { recordingId, questionId: queueItem.questionId });
-      const result = await callDespegaAI(blob, queueItem);
-      novaPerfMark('api_end', { recordingId, backendTiming: result?.timing || null });
-      novaPerfDuration('api_start', 'api_end', { phase: 'api_ms' });
+      novaPerfMark('transcription_api_start', { recordingId, questionId: queueItem.questionId });
+      const transcriptionResult = await callDespegaAI(blob, {
+        ...queueItem,
+        mode: 'transcribe'
+      });
+      novaPerfMark('transcription_api_end', { recordingId, backendTiming: transcriptionResult?.timing || null });
+      novaPerfDuration('transcription_api_start', 'transcription_api_end', { phase: 'transcription_api_ms' });
+
       if (
         currentStep !== 'step3' ||
-        interview.activeRequestRecordingId !== recordingId
+        interview.activeRequestRecordingId !== recordingId ||
+        processingLifecycle !== interview.lifecycleId
       ) return;
-      console.log('[NOVA AUDIO] transcription_result', {
+
+      acceptedTranscript = String(transcriptionResult?.transcript || '').trim();
+      interview.pendingTranscript = acceptedTranscript;
+      interview.pendingAnalysisItem = queueItem;
+      novaTurnLog('transcript_received', {
         recordingId,
-        transcript: result?.transcript || ''
+        chars: acceptedTranscript.length
       });
+
+      setInterviewBusy(true, 'analysis');
+      setVoiceStatus('Entendiendo tu respuesta…', 'processing');
+      novaPerfMark('analysis_api_start', { recordingId, questionId: queueItem.questionId });
+      const result = await callDespegaAI(null, {
+        ...queueItem,
+        mode: 'analyze',
+        transcriptOverride: acceptedTranscript
+      });
+      novaPerfMark('analysis_api_end', { recordingId, backendTiming: result?.timing || null });
+      novaPerfDuration('analysis_api_start', 'analysis_api_end', { phase: 'analysis_api_ms' });
+
+      if (
+        currentStep !== 'step3' ||
+        interview.activeRequestRecordingId !== recordingId ||
+        processingLifecycle !== interview.lifecycleId
+      ) return;
+
+      interview.pendingTranscript = '';
+      interview.pendingAnalysisItem = null;
       setInterviewBusy(false);
+      novaTurnLog('analysis_received', { questionId: queueItem.questionId, recordingId });
       novaTurnLog('processing_end', { questionId: queueItem.questionId, recordingId });
+
       const accepted = await receiveAIResult(
         result,
         recordingId,
@@ -6389,20 +6567,9 @@ main{width:100%;height:100%}
     } catch (error) {
       if (error?.name === 'AbortError') {
         console.log('[NOVA] request aborted', { code: error?.code || 'ABORTED' });
-
         if (currentStep !== 'step3' || processingLifecycle !== interview.lifecycleId) {
           return;
         }
-
-        setInterviewBusy(false);
-        resetForRecording();
-        setAgentState('error');
-        const timeoutMessage = error?.code === 'REQUEST_TIMEOUT'
-          ? 'La respuesta tardó demasiado. Toca el micrófono para intentarlo otra vez.'
-          : 'Toca el micrófono para intentarlo otra vez.';
-        showNovaNotice('No pude procesar esa respuesta', timeoutMessage, 'error');
-        setVoiceStatus(timeoutMessage, 'error');
-        return;
       }
 
       const qualityMessages = {
@@ -6426,18 +6593,18 @@ main{width:100%;height:100%}
         setInterviewBusy(false);
         resetForRecording();
 
-        if (error?.code === 'NO_SPEECH_DETECTED' && interview.autoListenEnabled) {
+        if (interview.autoListenEnabled) {
           interview.noSpeechReminderCount += 1;
 
           if (interview.noSpeechReminderCount <= 1) {
             setAgentEmotion('supportive');
             setAgentState('no_speech_1');
             showNovaNotice(
-              'No escuché una respuesta todavía',
-              'Tómate tu tiempo. Nova volverá a escucharte automáticamente.',
+              qualityFailure.title,
+              'Tu progreso sigue guardado. Nova volverá a escucharte automáticamente.',
               'supportive'
             );
-            setVoiceStatus('No detecté voz. Volveré a escucharte automáticamente.', 'ok');
+            setVoiceStatus('Volveré a escucharte automáticamente.', 'ok');
 
             await new Promise(resolve => setTimeout(resolve, 450));
             if (
@@ -6470,10 +6637,59 @@ main{width:100%;height:100%}
         return;
       }
 
+      if (
+        isRetryableProcessingError(error) &&
+        (error?.phase === 'analysis' || acceptedTranscript) &&
+        acceptedTranscript
+      ) {
+        console.warn('[NOVA RECOVERY] analysis_only_retry', {
+          recordingId,
+          code: error?.code || error?.name || 'UNKNOWN'
+        });
+        try {
+          const retriedResult = await retryAnalysisFromTranscript(
+            queueItem,
+            acceptedTranscript,
+            processingLifecycle,
+            recordingId,
+            'automatic_analysis_retry'
+          );
+          if (retriedResult) {
+            const accepted = await receiveAIResult(
+              retriedResult,
+              recordingId,
+              queueItem.questionId,
+              processingLifecycle
+            );
+            if (accepted) {
+              interview.processedRecordingIds.add(recordingId);
+              interview.pendingTranscript = '';
+              interview.pendingAnalysisItem = null;
+              console.log('[NOVA AUDIO] turn_completed_after_analysis_retry', { recordingId });
+            }
+            return;
+          }
+        } catch (analysisRetryError) {
+          interview.pendingTranscript = acceptedTranscript;
+          interview.pendingAnalysisItem = queueItem;
+          interview.autoListenEnabled = false;
+          setAgentState('paused');
+          showNovaNotice(
+            'Tu respuesta quedó pendiente de análisis',
+            'Tu voz ya quedó transcrita. Toca el micrófono para reintentar el análisis; no necesitas repetirla.',
+            'paused'
+          );
+          setVoiceStatus('Tu respuesta hablada está segura; falta terminar el análisis.', 'error');
+          if (recordAnswerButton) recordAnswerButton.disabled = false;
+          return;
+        }
+      }
+
       if (isRetryableProcessingError(error)) {
         console.warn('[NOVA RECOVERY] retryable_processing_failure', {
           recordingId,
-          code: error?.code || error?.name || 'UNKNOWN'
+          code: error?.code || error?.name || 'UNKNOWN',
+          phase: error?.phase || interview.processingPhase || ''
         });
         await recoverFromProcessingFailure(error, processingLifecycle, recordingId);
         return;
@@ -6610,7 +6826,7 @@ main{width:100%;height:100%}
       localStorage.setItem('despegaInterviewUsefulAnswers', String(interview.usefulAnswersCount));
     }
 
-    const reachedHardCap = interview.answersCount >= DESPEGA_AI.maxInterviewQuestions;
+    const reachedHardCap = interview.mainQuestionsAsked >= DESPEGA_AI.maxInterviewQuestions;
     const allResolved = resolvedDimensionCount() === NOVA_CORE_DIMENSIONS.length;
     const hasMinimumUseful = interview.usefulAnswersCount >= DESPEGA_AI.minInterviewQuestions;
     const aiComplete = Boolean(result?.interview_complete || result?.should_finish);
@@ -6700,6 +6916,20 @@ main{width:100%;height:100%}
     interview.noSpeechReminderCount = 0;
     interview.listenRecoveryAttempts = 0;
 
+    const previousDimension = interview.questionId;
+    const isClarificationTurn = nextDimension === previousDimension;
+
+    if (isClarificationTurn) {
+      interview.clarificationsAsked += 1;
+      localStorage.setItem('despegaInterviewClarifications', String(interview.clarificationsAsked));
+    } else {
+      interview.mainQuestionsAsked = Math.min(
+        DESPEGA_AI.maxInterviewQuestions,
+        interview.mainQuestionsAsked + 1
+      );
+      localStorage.setItem('despegaInterviewMainQuestions', String(interview.mainQuestionsAsked));
+    }
+
     interview.questionId = nextDimension;
     interview.askedCount[nextDimension] = Number(interview.askedCount[nextDimension] || 0) + 1;
     interview.currentQuestion = nextQuestion;
@@ -6713,6 +6943,8 @@ main{width:100%;height:100%}
     console.log('[NOVA FLOW] next_dimension', {
       nextDimension,
       answersCount: interview.answersCount,
+      mainQuestionsAsked: interview.mainQuestionsAsked,
+      clarificationsAsked: interview.clarificationsAsked,
       resolved: resolvedDimensionCount()
     });
 
