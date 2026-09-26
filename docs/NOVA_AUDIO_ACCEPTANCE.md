@@ -146,3 +146,14 @@ Expected:
 ## Promotion gate
 
 Do not merge to `main` until all 15 cases pass on the Vercel Preview connected to the hardened Supabase Edge Function.
+
+
+## Plan 5 — timeout and recovery acceptance
+
+- Backend transcription uses two bounded attempts with phase-specific timeouts and preserves the same recording_id.
+- Analysis uses a separate timeout policy from audio transcription.
+- A retryable 5xx/timeout must never leave Nova silently idle.
+- Frontend processing watchdog aborts a stuck request and routes it into interactive recovery.
+- processedRecordingIds is written only after receiveAIResult accepts the turn.
+- After a terminal retryable processing failure, Nova speaks a short recovery message and resumes listening automatically; if listening cannot resume, the existing paused/manual fallback remains available.
+- The current question/dimension must not advance before a validated result is accepted.

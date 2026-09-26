@@ -14,6 +14,13 @@ const MAX_BARRIER_DETAILS = 12;
 const RATE_LIMIT_PER_MINUTE = 20;
 const MODEL = Deno.env.get("GEMINI_MODEL") || "gemini-3.8-flash";
 const FALLBACK_MODEL = Deno.env.get("GEMINI_FALLBACK_MODEL") || "gemini-3.5-flash-lite";
+const GEMINI_TIMEOUTS = Object.freeze({
+  transcriptionFast: 7000,
+  transcriptionFallback: 9000,
+  analysisFast: 5000,
+  analysisFallback: 6500,
+});
+const GEMINI_RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
 
 const VALID_INTENTS = new Set([
   "answer",
@@ -517,20 +524,38 @@ async function callGeminiResilient(args: {
   audioType?: string;
   audioBase64?: string;
   temperature?: number;
+  phase?: "transcription" | "analysis";
 }) {
-  const attempts = [
-    { model: FALLBACK_MODEL, timeoutMs: 3500, label: "primary_fast" },
-    { model: MODEL, timeoutMs: 3200, label: "fallback_quality" },
-  ];
+  const phase = args.phase || "analysis";
+  const attempts = phase === "transcription"
+    ? [
+        { model: FALLBACK_MODEL, timeoutMs: GEMINI_TIMEOUTS.transcriptionFast, label: "primary_fast" },
+        { model: MODEL, timeoutMs: GEMINI_TIMEOUTS.transcriptionFallback, label: "fallback_quality" },
+      ]
+    : [
+        { model: FALLBACK_MODEL, timeoutMs: GEMINI_TIMEOUTS.analysisFast, label: "primary_fast" },
+        { model: MODEL, timeoutMs: GEMINI_TIMEOUTS.analysisFallback, label: "fallback_quality" },
+      ];
 
   let lastResponse: Response | null = null;
   let lastPayload: any = null;
+  const attemptMetrics: Array<Record<string, unknown>> = [];
 
-  for (const attempt of attempts) {
+  for (let index = 0; index < attempts.length; index += 1) {
+    const attempt = attempts[index];
     const endpoint =
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(attempt.model)}:generateContent?key=${encodeURIComponent(args.apiKey)}`;
     const controller = new AbortController();
+    const startedAt = performance.now();
     const timeout = setTimeout(() => controller.abort(), attempt.timeoutMs);
+
+    console.log("[NOVA RECOVERY] gemini_attempt_started", JSON.stringify({
+      phase,
+      attempt: index + 1,
+      path: attempt.label,
+      model: attempt.model,
+      timeout_ms: attempt.timeoutMs,
+    }));
 
     try {
       const response = await fetch(endpoint, {
@@ -549,44 +574,87 @@ async function callGeminiResilient(args: {
       const payload = await response.json();
       lastResponse = response;
       lastPayload = payload;
-
-      if (response.ok) {
-        if (attempt.label !== "primary_fast") {
-          console.log("Gemini recovery", JSON.stringify({
-            path: attempt.label,
-            model: attempt.model,
-            status: response.status,
-          }));
-        }
-        return { response, payload, model: attempt.model, path: attempt.label };
-      }
-
-      const retryable = [429, 500, 502, 503, 504].includes(response.status);
-      console.error("Gemini attempt failed", JSON.stringify({
+      const durationMs = Math.round(performance.now() - startedAt);
+      attemptMetrics.push({
+        attempt: index + 1,
         path: attempt.label,
         model: attempt.model,
+        duration_ms: durationMs,
+        status: response.status,
+        ok: response.ok,
+      });
+
+      if (response.ok) {
+        console.log("[NOVA RECOVERY] gemini_attempt_succeeded", JSON.stringify({
+          phase,
+          attempt: index + 1,
+          path: attempt.label,
+          model: attempt.model,
+          duration_ms: durationMs,
+          recovered: index > 0,
+        }));
+        return {
+          response,
+          payload,
+          model: attempt.model,
+          path: attempt.label,
+          attempts: attemptMetrics,
+          fallbackUsed: index > 0,
+        };
+      }
+
+      const retryable = GEMINI_RETRYABLE_STATUSES.has(response.status);
+      console.error("[NOVA RECOVERY] gemini_attempt_failed", JSON.stringify({
+        phase,
+        attempt: index + 1,
+        path: attempt.label,
+        model: attempt.model,
+        duration_ms: durationMs,
         status: response.status,
         code: payload?.error?.status || payload?.error?.code || null,
+        retryable,
       }));
 
       if (!retryable) break;
     } catch (error) {
-      console.error("Gemini attempt failed", JSON.stringify({
+      const durationMs = Math.round(performance.now() - startedAt);
+      const code = error instanceof Error ? error.name : "UNKNOWN";
+      attemptMetrics.push({
+        attempt: index + 1,
         path: attempt.label,
         model: attempt.model,
+        duration_ms: durationMs,
         status: "timeout_or_network",
-        code: error instanceof Error ? error.name : "UNKNOWN",
+        code,
+        ok: false,
+      });
+      console.error("[NOVA RECOVERY] gemini_attempt_failed", JSON.stringify({
+        phase,
+        attempt: index + 1,
+        path: attempt.label,
+        model: attempt.model,
+        duration_ms: durationMs,
+        status: "timeout_or_network",
+        code,
+        retryable: true,
       }));
     } finally {
       clearTimeout(timeout);
     }
   }
 
+  console.error("[NOVA RECOVERY] gemini_exhausted", JSON.stringify({
+    phase,
+    attempts: attemptMetrics.length,
+  }));
+
   return {
     response: lastResponse,
     payload: lastPayload,
     model: null,
     path: "failed",
+    attempts: attemptMetrics,
+    fallbackUsed: attemptMetrics.length > 1,
   };
 }
 
@@ -630,7 +698,15 @@ Deno.serve(async (req: Request) => {
     const requestStartedAt = performance.now();
     const timing = {
       transcription_ms: 0,
+      transcription_attempt_1_ms: 0,
+      transcription_attempt_2_ms: 0,
+      transcription_model: "",
+      transcription_fallback_used: false,
       analysis_ms: 0,
+      analysis_attempt_1_ms: 0,
+      analysis_attempt_2_ms: 0,
+      analysis_model: "",
+      analysis_fallback_used: false,
       persistence_ms: 0,
       total_ms: 0,
     };
@@ -731,15 +807,23 @@ Devuelve únicamente el JSON solicitado por el schema.
       audioType: audio.type || "audio/webm",
       audioBase64,
       temperature: 0,
+      phase: "transcription",
     });
 
     timing.transcription_ms = Math.round(performance.now() - transcriptionStartedAt);
+    timing.transcription_attempt_1_ms = Number(transcriptionGemini.attempts?.[0]?.duration_ms || 0);
+    timing.transcription_attempt_2_ms = Number(transcriptionGemini.attempts?.[1]?.duration_ms || 0);
+    timing.transcription_model = String(transcriptionGemini.model || "");
+    timing.transcription_fallback_used = Boolean(transcriptionGemini.fallbackUsed);
 
     if (!transcriptionGemini.response?.ok) {
       return json({
         error: "TRANSCRIPTION_TEMPORARILY_UNAVAILABLE",
         message: "No pude transcribir el audio en este momento. Intenta otra vez.",
         retryable: true,
+        recording_id: recordingId,
+        phase: "transcription",
+        timing,
       }, 503, origin);
     }
 
@@ -928,8 +1012,13 @@ Devuelve solo el JSON solicitado por el schema.
       prompt,
       responseSchema: analysisSchema,
       temperature: 0.2,
+      phase: "analysis",
     });
     timing.analysis_ms = Math.round(performance.now() - analysisStartedAt);
+    timing.analysis_attempt_1_ms = Number(gemini.attempts?.[0]?.duration_ms || 0);
+    timing.analysis_attempt_2_ms = Number(gemini.attempts?.[1]?.duration_ms || 0);
+    timing.analysis_model = String(gemini.model || "");
+    timing.analysis_fallback_used = Boolean(gemini.fallbackUsed);
     const geminiResponse = gemini.response;
     const payload = gemini.payload;
 
@@ -940,8 +1029,11 @@ Devuelve solo el JSON solicitado por el schema.
       }));
       return json({
         error: "GEMINI_TEMPORARILY_UNAVAILABLE",
-        message: "Gemini está temporalmente ocupado. Intenta responder otra vez en unos segundos.",
+        message: "No pude analizar la respuesta en este momento. Intenta otra vez.",
         retryable: true,
+        recording_id: recordingId,
+        phase: "analysis",
+        timing,
       }, 503, origin);
     }
 

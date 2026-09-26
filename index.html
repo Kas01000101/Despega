@@ -3279,6 +3279,8 @@ main{width:100%;height:100%}
     // Cuando despliegues Kokoro, coloca aquí su endpoint, p. ej. https://tts.example.com/synthesize
     kokoroTtsUrl: '',
     maxRecordingSeconds: 30,
+    requestTimeoutMs: 32000,
+    processingWatchdogMs: 35000,
     minRecordingMs: 800,
     minAudioBytes: 256,
     vadCalibrationMs: 400,
@@ -4014,6 +4016,7 @@ main{width:100%;height:100%}
     isSendingAudio: false,
     listenRecoveryAttempts: 0,
     listenWatchdog: null,
+    processingWatchdog: null,
     askedCount: Object.fromEntries(NOVA_CORE_DIMENSIONS.map((dimension) => [dimension, 0]))
   };
 
@@ -4089,6 +4092,11 @@ main{width:100%;height:100%}
       label: 'Analizando…',
       caption: '',
       helper: ''
+    },
+    recovering: {
+      label: 'Reintentando…',
+      caption: 'Estoy recuperando tu turno',
+      helper: 'No necesitas repetir todavía.'
     },
     confirming: {
       label: '',
@@ -4530,8 +4538,28 @@ main{width:100%;height:100%}
     if (type) voiceStatus.classList.add(`status-${type}`);
   }
 
+  function clearProcessingWatchdog() {
+    if (interview.processingWatchdog) clearTimeout(interview.processingWatchdog);
+    interview.processingWatchdog = null;
+  }
+
   function setInterviewBusy(busy) {
     interview.isProcessing = busy;
+    clearProcessingWatchdog();
+
+    if (busy) {
+      const lifecycle = interview.lifecycleId;
+      interview.processingWatchdog = setTimeout(() => {
+        if (
+          currentStep !== 'step3' ||
+          lifecycle !== interview.lifecycleId ||
+          !interview.isProcessing
+        ) return;
+        novaTurnLog('processing_watchdog_timeout', { lifecycle });
+        interview.requestController?.abort();
+      }, DESPEGA_AI.processingWatchdogMs);
+    }
+
     if (recordAnswerButton) recordAnswerButton.disabled = busy;
     if (playExampleButton) playExampleButton.disabled = busy;
     aiQuestionBubble?.classList.toggle('processing', busy);
@@ -5038,6 +5066,7 @@ main{width:100%;height:100%}
     clearTimeout(interview.enterTimer);
     clearTimeout(interview.maxTimer);
     clearListeningWatchdog();
+    clearProcessingWatchdog();
     clearInterval(interview.durationTimer);
     clearTimeout(interview.continuationTimer);
     interview.enterTimer = null;
@@ -5285,7 +5314,7 @@ main{width:100%;height:100%}
     interview.requestTimeout = setTimeout(() => {
       requestTimedOut = true;
       controller.abort();
-    }, 15000);
+    }, DESPEGA_AI.requestTimeoutMs);
 
     const form = new FormData();
     form.append('audio', audioBlob, `despega-${Date.now()}.${audioBlob.type.includes('ogg') ? 'ogg' : audioBlob.type.includes('mp4') ? 'm4a' : 'webm'}`);
@@ -5349,6 +5378,54 @@ main{width:100%;height:100%}
         interview.requestController = null;
       }
     }
+  }
+
+  const RETRYABLE_PROCESSING_ERRORS = new Set([
+    'TRANSCRIPTION_TEMPORARILY_UNAVAILABLE',
+    'GEMINI_TEMPORARILY_UNAVAILABLE',
+    'REQUEST_TIMEOUT',
+    'HTTP_429',
+    'HTTP_500',
+    'HTTP_502',
+    'HTTP_503',
+    'HTTP_504'
+  ]);
+
+  function isRetryableProcessingError(error) {
+    if (!navigator.onLine) return false;
+    const code = String(error?.code || '');
+    return RETRYABLE_PROCESSING_ERRORS.has(code) || error instanceof TypeError;
+  }
+
+  async function recoverFromProcessingFailure(error, processingLifecycle, recordingId) {
+    if (currentStep !== 'step3' || processingLifecycle !== interview.lifecycleId) return false;
+
+    interview.processedRecordingIds.delete(recordingId);
+    interview.autoListenEnabled = true;
+    interview.noSpeechReminderCount = 0;
+    setInterviewBusy(false);
+    setAgentEmotion('supportive');
+    setAgentState('recovering');
+    showNovaNotice(
+      'Tuve un problema procesando tu respuesta',
+      'No se perdió la conversación. Nova volverá a escucharte.',
+      'supportive'
+    );
+    setVoiceStatus('Reintentando la conversación…', 'processing');
+    novaTurnLog('frontend_recovery_started', {
+      recordingId,
+      code: String(error?.code || error?.name || 'UNKNOWN')
+    });
+
+    await speakText(
+      'Tuve un problema al procesar tu respuesta. Cuando quieras, intentémoslo nuevamente.',
+      false
+    ).catch((speechError) => console.warn('[NOVA RECOVERY] recovery_tts_failed', speechError));
+
+    if (currentStep !== 'step3' || processingLifecycle !== interview.lifecycleId) return false;
+    const resumed = await resumeListeningAfterSpeech('processing_failure_recovery');
+    novaTurnLog('frontend_recovery_completed', { recordingId, resumed });
+    return resumed;
   }
 
   function pickRecordingMimeType() {
@@ -6280,7 +6357,6 @@ main{width:100%;height:100%}
       return;
     }
 
-    interview.processedRecordingIds.add(recordingId);
     interview.isSendingAudio = true;
     interview.activeRequestRecordingId = recordingId;
 
@@ -6306,7 +6382,10 @@ main{width:100%;height:100%}
         queueItem.questionId,
         processingLifecycle
       );
-      if (accepted) console.log('[NOVA AUDIO] turn_completed', { recordingId });
+      if (accepted) {
+        interview.processedRecordingIds.add(recordingId);
+        console.log('[NOVA AUDIO] turn_completed', { recordingId });
+      }
     } catch (error) {
       if (error?.name === 'AbortError') {
         console.log('[NOVA] request aborted', { code: error?.code || 'ABORTED' });
@@ -6388,6 +6467,15 @@ main{width:100%;height:100%}
           'error'
         );
         if (recordAnswerButton) recordAnswerButton.disabled = false;
+        return;
+      }
+
+      if (isRetryableProcessingError(error)) {
+        console.warn('[NOVA RECOVERY] retryable_processing_failure', {
+          recordingId,
+          code: error?.code || error?.name || 'UNKNOWN'
+        });
+        await recoverFromProcessingFailure(error, processingLifecycle, recordingId);
         return;
       }
 
