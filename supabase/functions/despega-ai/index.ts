@@ -1022,7 +1022,7 @@ Deno.serve(async (req: Request) => {
           : []
       );
 
-      const chatPrompt = \`
+      const chatPrompt = `
 Eres Nova, asistente de orientación de DESPEGA.
 
 OBJETIVO:
@@ -1043,16 +1043,16 @@ REGLAS OBLIGATORIAS:
 - Máximo 2 párrafos breves o 6 viñetas.
 - Responde en español.
 
-VISTA ACTUAL: \${currentView}
+VISTA ACTUAL: ${currentView}
 CONTEXTO CONTROLADO:
-\${JSON.stringify(chatContext)}
+${JSON.stringify(chatContext)}
 HISTORIAL RECIENTE:
-\${JSON.stringify(chatHistory)}
+${JSON.stringify(chatHistory)}
 MENSAJE DEL USUARIO:
-\${message}
+${message}
 
 Devuelve solo el JSON del schema.
-\`;
+`;
 
       const chatStartedAt = performance.now();
       const gemini = await callGeminiResilient({
