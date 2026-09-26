@@ -1559,3 +1559,39 @@
     color: #fff !important;
   }
 }
+
+
+/* =========================================================
+   STEP 3 — AJUSTE FINAL DE HERO / ACENTO
+   Mantener el hero por debajo de la zona amarilla y asegurar
+   que las palabras clave conserven el acento rosado.
+   ========================================================= */
+@media (min-width: 900px) {
+  #step3View .onboarding-copy .accent-pink {
+    color: #f1268d !important;
+  }
+}
+
+@media (min-width: 1200px) {
+  #step3View .onboarding-copy {
+    top: clamp(150px, 20dvh, 184px) !important;
+  }
+}
+
+@media (min-width: 1200px) and (max-height: 800px) {
+  #step3View .onboarding-copy {
+    top: 136px !important;
+  }
+}
+
+@media (min-width: 900px) and (max-width: 1199px) {
+  #step3View .onboarding-copy {
+    top: 118px !important;
+  }
+}
+
+@media (min-width: 900px) and (max-width: 1100px) and (max-height: 700px) {
+  #step3View .onboarding-copy {
+    top: 96px !important;
+  }
+}
