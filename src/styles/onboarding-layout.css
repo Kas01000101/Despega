@@ -1160,6 +1160,80 @@
 }
 
 /* =========================================================
+   TABLET ESTÁNDAR — Huawei MediaPad M5 Lite 10 (landscape)
+   Pantalla física 1920x1200, 16:10. En navegador el viewport
+   CSS puede variar por DPR/zoom; se cubre el rango típico
+   compacto sin romper la regla de card única.
+   ========================================================= */
+@media (min-width: 900px) and (max-width: 1100px) and (max-height: 700px) {
+  :root {
+    --onboarding-card-top: 60px;
+    --onboarding-card-bottom-gap: 12px;
+    --onboarding-side-gap: 12px;
+    --onboarding-card-max-width: 620px;
+    --onboarding-card-height: 500px;
+    --onboarding-character-width: min(100%, 600px);
+    --nova-size: 235px;
+  }
+
+  #registerView,
+  #step2View,
+  #step3View.nova-page-view {
+    grid-template-columns: minmax(330px, 39%) minmax(0, 61%) !important;
+  }
+
+  #registerView .register-panel,
+  #step2View .flow-panel,
+  #step3View .flow-panel {
+    padding:
+      var(--onboarding-card-top)
+      var(--onboarding-side-gap)
+      var(--onboarding-card-bottom-gap)
+      var(--onboarding-side-gap) !important;
+  }
+
+  #registerView .register-card,
+  #step2View .step2-card,
+  #step3View .nova-conversation-card {
+    width: min(100%, var(--onboarding-card-max-width)) !important;
+    height: var(--onboarding-card-height) !important;
+    min-height: var(--onboarding-card-height) !important;
+    max-height: var(--onboarding-card-height) !important;
+    margin: 0 auto !important;
+  }
+
+  #step2View .onboarding-art,
+  #step3View .onboarding-art {
+    width: var(--onboarding-character-width) !important;
+    height: calc(100dvh - 165px) !important;
+  }
+
+  #step2View .onboarding-art-panel::before,
+  #step3View .onboarding-art-panel::before {
+    top: 44px !important;
+    width: 90% !important;
+    font-size: clamp(28px, 4vw, 38px) !important;
+  }
+
+  #step2View .onboarding-art-panel::after,
+  #step3View .onboarding-art-panel::after {
+    top: 125px !important;
+    width: 86% !important;
+    font-size: 11.5px !important;
+  }
+
+  #step3View .nova-orb {
+    width: var(--nova-size) !important;
+    height: var(--nova-size) !important;
+  }
+
+  #step3View .nova-orb .agent-orb-core {
+    width: 168px !important;
+    height: 168px !important;
+  }
+}
+
+/* =========================================================
    ALTURA EXTREMADAMENTE BAJA — WEB/TABLET
    ========================================================= */
 @media (min-width: 900px) and (max-height: 639px) {
