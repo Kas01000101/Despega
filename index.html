@@ -2465,14 +2465,6 @@ main{width:100%;height:100%}
   <link rel="stylesheet" href="./src/styles/nova-avatar.css">
   <link rel="stylesheet" href="./src/styles/onboarding-layout.css">
 
-<style id="nova-finish-controls">
-#step3View .nova-actions{display:flex!important;justify-content:flex-end!important;align-items:center!important;gap:14px!important}
-#step3View #step3Back{flex:0 0 158px!important;width:158px!important;min-width:158px!important;height:46px!important;min-height:46px!important;margin:0!important}
-#step3View .nova-finish-button{flex:0 0 194px!important;width:194px!important;min-width:194px!important;height:46px!important;min-height:46px!important;margin:0!important}
-#step3View .nova-finish-button:disabled{opacity:.42!important;cursor:not-allowed!important;box-shadow:none!important}
-#step3View .nova-finish-button:not(:disabled){box-shadow:0 10px 24px rgba(241,38,141,.16)!important}
-@media(max-width:560px){#step3View .nova-actions{justify-content:center!important}#step3View #step3Back,#step3View .nova-finish-button{flex:1 1 0!important;width:auto!important;min-width:0!important}}
-</style>
 </head>
 <body>
 <!--
@@ -2822,9 +2814,13 @@ main{width:100%;height:100%}
     </section>
 
     <!-- REGISTRO / PASO 3 -->
-    <section id="step3View" class="auth-view nova-page-view" data-view="step3" hidden>
-      <div class="nova-page-shell">
-        <form id="step3Form" class="nova-conversation-card" novalidate>
+    <section id="step3View" class="auth-view form-flow-view nova-page-view" data-view="step3" hidden>
+      <section class="hero-panel onboarding-art-panel nova-art-panel" aria-label="Conocerte mejor nos ayuda a orientarte">
+        <img class="onboarding-art" data-shared-characters="true" alt="Dos jóvenes estudiantes de DESPEGA">
+      </section>
+
+      <section class="auth-panel flow-panel nova-flow-panel" aria-labelledby="step3Title">
+        <form id="step3Form" class="card flow-card nova-conversation-card" novalidate>
           <ol class="stepper flow-stepper stepper-four nova-stepper" aria-label="Progreso del registro">
             <li class="step completed"><span class="step-circle" aria-hidden="true">✓</span><span class="step-label">Tus datos</span></li>
             <li class="step completed"><span class="step-circle" aria-hidden="true">✓</span><span class="step-label">Tu situación</span></li>
@@ -2899,7 +2895,7 @@ main{width:100%;height:100%}
             <button id="step3Finish" class="primary-button nova-finish-button" type="button" disabled>Finalizar</button>
           </footer>
         </form>
-      </div>
+      </section>
     </section>
 
 
