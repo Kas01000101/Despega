@@ -664,15 +664,39 @@ Devuelve únicamente el JSON solicitado por el schema.
       transcriptLength: transcript.length,
     }));
 
-    if (!speechDetected || !transcript || transcriptionQuality !== "good") {
+    if (!speechDetected) {
+      return json({
+        error: "NO_SPEECH_DETECTED",
+        message: "No detecté una respuesta hablada. Inténtalo otra vez.",
+        retryable: true,
+        recording_id: recordingId,
+        transcript: "",
+        transcription_quality: transcriptionQuality,
+        speech_detected: false,
+      }, 422, origin);
+    }
+
+    if (!transcript || transcriptionQuality === "inaudible") {
+      return json({
+        error: "AUDIO_INAUDIBLE",
+        message: "No pude entender el audio con suficiente claridad. Inténtalo otra vez.",
+        retryable: true,
+        recording_id: recordingId,
+        transcript,
+        transcription_quality: "inaudible",
+        speech_detected: true,
+      }, 422, origin);
+    }
+
+    if (transcriptionQuality !== "good") {
       return json({
         error: "TRANSCRIPTION_UNCERTAIN",
-        message: "No pude entender bien esa respuesta. Inténtalo otra vez.",
+        message: "Escuché tu voz, pero no tengo suficiente certeza sobre lo que dijiste. Inténtalo otra vez.",
         retryable: true,
         recording_id: recordingId,
         transcript,
         transcription_quality: transcriptionQuality,
-        speech_detected: speechDetected,
+        speech_detected: true,
       }, 422, origin);
     }
 
