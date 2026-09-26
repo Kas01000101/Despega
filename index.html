@@ -2896,7 +2896,6 @@ main{width:100%;height:100%}
           </main>
 
           <footer class="nova-actions">
-            <button id="step3Back" class="secondary-button" type="button">Volver</button>
             <button id="step3Finish" class="primary-button nova-finish-button" type="button" disabled>Finalizar</button>
           </footer>
         </form>
@@ -3548,10 +3547,6 @@ main{width:100%;height:100%}
   }
 
   // ---------- PASO 3 / ENTREVISTA ADAPTATIVA REAL ----------
-  $('#step3Back')?.addEventListener('click', (event) =>
-    animateThen(event.currentTarget, 'back', () => goTo('step2'))
-  );
-
   const NOVA_CORE_DIMENSIONS = Object.freeze(['goal', 'interests', 'skills', 'experience', 'barriers']);
   const NOVA_DIMENSION_SET = new Set(NOVA_CORE_DIMENSIONS);
   const NOVA_QUESTIONS = Object.freeze({
