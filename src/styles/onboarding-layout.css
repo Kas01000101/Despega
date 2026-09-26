@@ -15,7 +15,9 @@
   --onboarding-card-top: clamp(108px, 13.5dvh, 150px);
   --onboarding-card-bottom-gap: 18px;
   --onboarding-side-gap: clamp(18px, 2vw, 32px);
-  --onboarding-card-max-width: 720px;
+  --onboarding-card-max-width: 760px;
+  --onboarding-card-height: clamp(540px, 68dvh, 620px);
+  --onboarding-character-width: min(94%, 760px);
   --onboarding-bg: var(--bg-main, #fffdf8);
   --onboarding-yellow: #ffe174;
   --onboarding-pink: #f46fc3;
@@ -41,14 +43,8 @@
     background: var(--onboarding-bg);
   }
 
-  #registerView {
-    grid-template-columns: minmax(0, 47%) minmax(0, 53%) !important;
-  }
-
-  #step2View {
-    grid-template-columns: minmax(420px, 42%) minmax(650px, 58%) !important;
-  }
-
+  #registerView,
+  #step2View,
   #step3View {
     grid-template-columns: minmax(420px, 42%) minmax(650px, 58%) !important;
   }
@@ -78,11 +74,16 @@
       var(--onboarding-side-gap) !important;
   }
 
-  #registerView .register-card {
+  #registerView .register-card,
+  #step2View .step2-card,
+  #step3View .nova-conversation-card {
     width: min(100%, var(--onboarding-card-max-width)) !important;
-    height: auto !important;
-    min-height: 0 !important;
-    max-height: calc(100dvh - var(--onboarding-card-top) - var(--onboarding-card-bottom-gap)) !important;
+    height: var(--onboarding-card-height) !important;
+    min-height: var(--onboarding-card-height) !important;
+    max-height: min(
+      var(--onboarding-card-height),
+      calc(100dvh - var(--onboarding-card-top) - var(--onboarding-card-bottom-gap))
+    ) !important;
     box-sizing: border-box;
     align-self: start !important;
     margin: 0 !important;
@@ -282,8 +283,8 @@
     z-index: 3 !important;
     left: 50% !important;
     bottom: 0 !important;
-    width: min(82%, 670px) !important;
-    height: calc(100dvh - 250px) !important;
+    width: var(--onboarding-character-width) !important;
+    height: calc(100dvh - 210px) !important;
     max-width: none !important;
     max-height: none !important;
     transform: translateX(-50%) !important;
@@ -301,12 +302,9 @@
    ========================================================= */
 @media (min-width: 1200px) {
   #step2View .step2-card {
-    width: min(100%, 700px) !important;
-    min-height: 480px !important;
     padding: 22px 26px 22px !important;
     gap: 10px !important;
-    border-radius: 24px !important;
-    margin: 0 !important;
+    border-radius: 28px !important;
     box-sizing: border-box;
   }
 }
@@ -335,11 +333,6 @@
   }
 
   #step3View .nova-conversation-card {
-    width: min(760px, 100%) !important;
-    height: clamp(510px, 68dvh, 620px) !important;
-    min-height: 0 !important;
-    max-height: calc(100dvh - var(--onboarding-card-top) - var(--onboarding-card-bottom-gap)) !important;
-    margin: 0 !important;
     padding: 18px 24px 18px !important;
     box-sizing: border-box;
     display: grid !important;
@@ -607,6 +600,9 @@
     --onboarding-card-top: 82px;
     --onboarding-card-bottom-gap: 12px;
     --onboarding-side-gap: 22px;
+    --onboarding-card-height: 525px;
+    --onboarding-card-max-width: 720px;
+    --onboarding-character-width: min(96%, 700px);
   }
 
   .language-wrap {
@@ -691,8 +687,8 @@
 
   #step2View .onboarding-art,
   #step3View .onboarding-art {
-    width: min(84%, 625px) !important;
-    height: calc(100dvh - 218px) !important;
+    width: var(--onboarding-character-width) !important;
+    height: calc(100dvh - 190px) !important;
   }
 
   .onboarding-decoration-yellow {
@@ -711,7 +707,6 @@
   }
 
   #step2View .step2-card {
-    min-height: 500px !important;
     padding: 18px 24px 20px !important;
     gap: 9px !important;
   }
@@ -760,8 +755,6 @@
   }
 
   #step3View .nova-conversation-card {
-    width: min(720px, 100%) !important;
-    height: clamp(500px, 68dvh, 525px) !important;
     padding: 15px 22px 15px !important;
     border-radius: 24px !important;
   }
@@ -833,6 +826,9 @@
     --onboarding-card-top: 78px;
     --onboarding-card-bottom-gap: 14px;
     --onboarding-side-gap: 14px;
+    --onboarding-card-max-width: 660px;
+    --onboarding-card-height: clamp(500px, 70dvh, 580px);
+    --onboarding-character-width: min(98%, 620px);
   }
 
   #registerView,
@@ -848,17 +844,14 @@
     background: var(--onboarding-bg);
   }
 
-  #registerView {
-    grid-template-columns: minmax(0, 42%) minmax(0, 58%) !important;
-  }
-
-  #step2View {
+  #registerView,
+  #step2View,
+  #step3View.nova-page-view {
     grid-template-columns: minmax(320px, 38%) minmax(0, 62%) !important;
   }
 
   #step3View.nova-page-view {
     display: grid !important;
-    grid-template-columns: minmax(300px, 35%) minmax(0, 65%) !important;
   }
 
   .language-wrap {
@@ -900,8 +893,8 @@
 
   #step2View .onboarding-art,
   #step3View .onboarding-art {
-    width: min(94%, 540px) !important;
-    height: calc(100dvh - 238px) !important;
+    width: var(--onboarding-character-width) !important;
+    height: calc(100dvh - 205px) !important;
   }
 
   .onboarding-decoration-yellow {
@@ -930,9 +923,21 @@
     opacity: .5;
   }
 
+  #registerView .register-card,
+  #step2View .step2-card,
+  #step3View .nova-conversation-card {
+    width: min(100%, var(--onboarding-card-max-width)) !important;
+    height: var(--onboarding-card-height) !important;
+    min-height: var(--onboarding-card-height) !important;
+    max-height: min(
+      var(--onboarding-card-height),
+      calc(100dvh - var(--onboarding-card-top) - var(--onboarding-card-bottom-gap))
+    ) !important;
+    margin: 0 !important;
+    box-sizing: border-box;
+  }
+
   #step2View .step2-card {
-    width: min(100%, 660px) !important;
-    min-height: 480px !important;
     padding: 18px 20px 20px !important;
     gap: 8px !important;
     border-radius: 22px !important;
@@ -944,11 +949,6 @@
   }
 
   #step3View .nova-conversation-card {
-    width: min(100%, 660px) !important;
-    height: clamp(500px, 70dvh, 580px) !important;
-    min-height: 0 !important;
-    max-height: calc(100dvh - var(--onboarding-card-top) - var(--onboarding-card-bottom-gap)) !important;
-    margin: 0 !important;
     padding: 15px 18px 15px !important;
     display: grid !important;
     grid-template-rows: auto minmax(0, 1fr) auto !important;
@@ -1177,8 +1177,10 @@
     overflow: visible !important;
   }
 
+  #registerView .register-card,
+  #step2View .step2-card,
   #step3View .nova-conversation-card {
-    height: auto !important;
+    height: 500px !important;
     min-height: 500px !important;
     max-height: none !important;
   }
