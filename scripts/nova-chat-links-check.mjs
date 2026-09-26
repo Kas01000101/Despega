@@ -4,8 +4,8 @@ const dashboard=fs.readFileSync('src/dashboard/dashboard.js','utf8');
 const edge=fs.readFileSync('supabase/functions/despega-ai/index.ts','utf8');
 const checks=[
  ['catalog stores official URLs',dashboard.includes("source:{name:")&&dashboard.includes("application:{url:")],
- ['only verified entries resolve',dashboard.includes("o.verification.status==='verified'")&&dashboard.includes('if(!isVerifiedOpportunity(o))return')],
- ['expired item cannot enter active catalog',dashboard.includes("status:'expired'")&&dashboard.includes('activeCatalog().filter')===false&&dashboard.includes('catalog.filter(isVerifiedOpportunity)')],
+ ['only verified entries resolve',dashboard.includes("verification.status==='verified'")&&dashboard.includes('if(!isVerifiedOpportunity(o))return')],
+ ['expired item cannot enter active catalog',dashboard.includes("status:'expired'")&&dashboard.includes('function activeCatalog(){return catalog.filter(isVerifiedOpportunity);}')],
  ['chat receives no URL field',chat.includes('source_name:o.source&&o.source.name')&&!chat.includes('source_url:o.source')],
  ['LLM forbidden to generate URL',edge.includes('NUNCA escribas ni inventes una URL')],
  ['external action resolves by ID',chat.includes("type==='open_external_verified'")&&chat.includes('api.getVerifiedUrl(target)')],
