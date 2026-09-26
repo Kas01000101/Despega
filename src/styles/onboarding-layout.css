@@ -146,7 +146,7 @@
   #step3View .onboarding-copy {
     position: absolute;
     z-index: 4;
-    top: clamp(176px, 23dvh, 220px);
+    top: clamp(138px, 18dvh, 176px);
     left: 50%;
     width: min(88%, 700px);
     transform: translateX(-50%);
@@ -168,6 +168,28 @@
   #step2View .onboarding-copy .accent-pink,
   #step3View .onboarding-copy .accent-pink {
     color: var(--pink-500, #f1268d);
+  }
+
+  #step2View .onboarding-copy h1 .accent-pink:last-child,
+  #step3View .onboarding-copy h1 .accent-pink:last-child {
+    position: relative;
+    display: inline-block;
+  }
+
+  #step2View .onboarding-copy h1 .accent-pink:last-child::after,
+  #step3View .onboarding-copy h1 .accent-pink:last-child::after {
+    content: "";
+    position: absolute;
+    left: 4%;
+    right: 2%;
+    bottom: -0.13em;
+    height: 0.09em;
+    min-height: 5px;
+    border-radius: 999px;
+    background: currentColor;
+    transform: rotate(-2deg);
+    transform-origin: center;
+    opacity: .98;
   }
 
   #step2View .onboarding-copy p,
@@ -714,7 +736,7 @@
 
   #step2View .onboarding-copy,
   #step3View .onboarding-copy {
-    top: 142px !important;
+    top: 112px !important;
     width: min(86%, 640px) !important;
   }
 
@@ -933,7 +955,7 @@
 
   #step2View .onboarding-copy,
   #step3View .onboarding-copy {
-    top: 124px !important;
+    top: 100px !important;
     width: 88% !important;
   }
 
@@ -1277,7 +1299,7 @@
 
   #step2View .onboarding-copy,
   #step3View .onboarding-copy {
-    top: 108px !important;
+    top: 88px !important;
     width: 90% !important;
   }
 
@@ -1574,24 +1596,24 @@
 
 @media (min-width: 1200px) {
   #step3View .onboarding-copy {
-    top: clamp(176px, 23dvh, 220px) !important;
+    top: clamp(138px, 18dvh, 176px) !important;
   }
 }
 
 @media (min-width: 1200px) and (max-height: 800px) {
   #step3View .onboarding-copy {
-    top: 142px !important;
+    top: 112px !important;
   }
 }
 
 @media (min-width: 900px) and (max-width: 1199px) {
   #step3View .onboarding-copy {
-    top: 124px !important;
+    top: 100px !important;
   }
 }
 
 @media (min-width: 900px) and (max-width: 1100px) and (max-height: 700px) {
   #step3View .onboarding-copy {
-    top: 108px !important;
+    top: 88px !important;
   }
 }
