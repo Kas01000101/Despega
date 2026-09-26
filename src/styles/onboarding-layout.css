@@ -136,9 +136,9 @@
   #step3View .onboarding-copy {
     position: absolute;
     z-index: 4;
-    top: clamp(108px, 14.5dvh, 146px);
+    top: clamp(142px, 19dvh, 180px);
     left: 50%;
-    width: min(88%, 720px);
+    width: min(88%, 700px);
     transform: translateX(-50%);
     text-align: center;
     pointer-events: none;
@@ -149,9 +149,9 @@
     margin: 0;
     color: var(--navy-900, #0f2b68);
     font-family: Poppins, system-ui, sans-serif;
-    font-size: clamp(36px, 3.05vw, 54px);
+    font-size: clamp(34px, 2.8vw, 48px);
     font-weight: 800;
-    line-height: 1.03;
+    line-height: 1.02;
     letter-spacing: -0.035em;
   }
 
@@ -163,7 +163,7 @@
   #step2View .onboarding-copy p,
   #step3View .onboarding-copy p {
     width: min(100%, 610px);
-    margin: 10px auto 0;
+    margin: 12px auto 0;
     color: #7184a8;
     font-family: Poppins, system-ui, sans-serif;
     font-size: clamp(13px, 1.05vw, 16px);
@@ -282,9 +282,9 @@
     position: absolute !important;
     z-index: 3 !important;
     left: 50% !important;
-    bottom: 0 !important;
+    bottom: 12px !important;
     width: var(--onboarding-character-width) !important;
-    height: calc(100dvh - 210px) !important;
+    height: calc(100dvh - 170px) !important;
     max-width: none !important;
     max-height: none !important;
     transform: translateX(-50%) !important;
@@ -678,37 +678,29 @@
     font-size: 11.5px !important;
   }
 
-  #step2View .onboarding-art-panel::before {
-    top: 58px !important;
-    width: min(86%, 650px) !important;
-    font-size: clamp(34px, 3vw, 46px) !important;
+  #step2View .onboarding-copy,
+  #step3View .onboarding-copy {
+    top: 102px !important;
+    width: min(86%, 640px) !important;
   }
 
-  #step3View .step3-visual-copy {
-    top: 58px !important;
-    width: min(86%, 650px) !important;
+  #step2View .onboarding-copy h1,
+  #step3View .onboarding-copy h1 {
+    font-size: clamp(32px, 2.8vw, 42px) !important;
   }
 
-  #step3View .step3-visual-copy h1 {
-    font-size: clamp(34px, 3vw, 46px) !important;
-  }
-
-  #step2View .onboarding-art-panel::after {
-    top: 146px !important;
-    width: min(78%, 570px) !important;
-    font-size: 12.8px !important;
-  }
-
-  #step3View .step3-visual-copy p {
-    width: min(78%, 570px) !important;
+  #step2View .onboarding-copy p,
+  #step3View .onboarding-copy p {
+    width: min(80%, 560px) !important;
     margin-top: 8px !important;
     font-size: 12.8px !important;
   }
 
   #step2View .onboarding-art,
   #step3View .onboarding-art {
+    bottom: 10px !important;
     width: var(--onboarding-character-width) !important;
-    height: calc(100dvh - 190px) !important;
+    height: calc(100dvh - 150px) !important;
   }
 
   .onboarding-decoration-yellow {
@@ -901,28 +893,19 @@
       var(--onboarding-side-gap) !important;
   }
 
-  #step2View .onboarding-art-panel::before {
-    top: 72px !important;
-    width: 88% !important;
-    font-size: clamp(30px, 3.8vw, 42px) !important;
-  }
-
-  #step3View .step3-visual-copy {
-    top: 72px !important;
+  #step2View .onboarding-copy,
+  #step3View .onboarding-copy {
+    top: 96px !important;
     width: 88% !important;
   }
 
-  #step3View .step3-visual-copy h1 {
-    font-size: clamp(30px, 3.8vw, 42px) !important;
+  #step2View .onboarding-copy h1,
+  #step3View .onboarding-copy h1 {
+    font-size: clamp(30px, 3.6vw, 40px) !important;
   }
 
-  #step2View .onboarding-art-panel::after {
-    top: 160px !important;
-    width: 82% !important;
-    font-size: 12px !important;
-  }
-
-  #step3View .step3-visual-copy p {
+  #step2View .onboarding-copy p,
+  #step3View .onboarding-copy p {
     width: 82% !important;
     margin-top: 8px !important;
     font-size: 12px !important;
@@ -930,8 +913,9 @@
 
   #step2View .onboarding-art,
   #step3View .onboarding-art {
+    bottom: 10px !important;
     width: var(--onboarding-character-width) !important;
-    height: calc(100dvh - 205px) !important;
+    height: calc(100dvh - 165px) !important;
   }
 
   .onboarding-decoration-yellow {
@@ -1237,32 +1221,24 @@
 
   #step2View .onboarding-art,
   #step3View .onboarding-art {
+    bottom: 8px !important;
     width: var(--onboarding-character-width) !important;
-    height: calc(100dvh - 165px) !important;
+    height: calc(100dvh - 125px) !important;
   }
 
-  #step2View .onboarding-art-panel::before {
-    top: 44px !important;
-    width: 90% !important;
-    font-size: clamp(28px, 4vw, 38px) !important;
-  }
-
-  #step3View .step3-visual-copy {
-    top: 44px !important;
+  #step2View .onboarding-copy,
+  #step3View .onboarding-copy {
+    top: 74px !important;
     width: 90% !important;
   }
 
-  #step3View .step3-visual-copy h1 {
-    font-size: clamp(28px, 4vw, 38px) !important;
+  #step2View .onboarding-copy h1,
+  #step3View .onboarding-copy h1 {
+    font-size: clamp(28px, 3.8vw, 36px) !important;
   }
 
-  #step2View .onboarding-art-panel::after {
-    top: 125px !important;
-    width: 86% !important;
-    font-size: 11.5px !important;
-  }
-
-  #step3View .step3-visual-copy p {
+  #step2View .onboarding-copy p,
+  #step3View .onboarding-copy p {
     width: 86% !important;
     margin-top: 6px !important;
     font-size: 11.5px !important;
