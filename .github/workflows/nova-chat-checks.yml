@@ -7,8 +7,10 @@ on:
   pull_request:
     paths:
       - "src/dashboard/nova-chat.js"
+      - "src/dashboard/dashboard.js"
       - "src/styles/dashboard.css"
       - "supabase/functions/despega-ai/index.ts"
+      - "supabase/migrations/*nova_chat*.sql"
       - "scripts/nova-chat-*.mjs"
 
 jobs:
@@ -21,3 +23,5 @@ jobs:
           node-version: "22"
       - run: node scripts/nova-chat-static-check.mjs
       - run: node scripts/nova-chat-regression-check.mjs
+      - run: node scripts/nova-chat-links-check.mjs
+      - run: node scripts/nova-chat-actions-check.mjs
