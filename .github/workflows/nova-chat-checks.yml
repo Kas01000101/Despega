@@ -1,0 +1,27 @@
+name: Nova chat checks
+
+on:
+  push:
+    branches:
+      - "feat/main-consolidation-nova"
+  pull_request:
+    paths:
+      - "src/dashboard/nova-chat.js"
+      - "src/dashboard/dashboard.js"
+      - "src/styles/dashboard.css"
+      - "supabase/functions/despega-ai/index.ts"
+      - "supabase/migrations/*nova_chat*.sql"
+      - "scripts/nova-chat-*.mjs"
+
+jobs:
+  nova-chat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: node scripts/nova-chat-static-check.mjs
+      - run: node scripts/nova-chat-regression-check.mjs
+      - run: node scripts/nova-chat-links-check.mjs
+      - run: node scripts/nova-chat-actions-check.mjs

@@ -1,0 +1,23 @@
+name: Dashboard checks
+
+on:
+  push:
+    branches:
+      - "feat/main-consolidation-nova"
+  pull_request:
+    paths:
+      - "index.html"
+      - "src/dashboard/**"
+      - "src/styles/dashboard.css"
+      - "scripts/dashboard-*.mjs"
+
+jobs:
+  dashboard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: node scripts/dashboard-static-check.mjs
+      - run: node scripts/dashboard-regression-check.mjs
