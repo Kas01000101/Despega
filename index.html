@@ -4633,7 +4633,6 @@ main{width:100%;height:100%}
 
   async function beginListeningTurn() {
     const lifecycle = interview.lifecycleId;
-    const listenToken = ++interview.listenTurnToken;
     if (
       currentStep !== 'step3' ||
       lifecycle !== interview.lifecycleId ||
@@ -4641,6 +4640,8 @@ main{width:100%;height:100%}
       !interview.autoListenEnabled ||
       interview.recordingState !== 'idle'
     ) return false;
+
+    const listenToken = ++interview.listenTurnToken;
 
     if (!navigator.onLine) {
       setAgentState('paused');
