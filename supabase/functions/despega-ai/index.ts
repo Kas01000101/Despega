@@ -8,7 +8,7 @@ const MAX_AUDIO_BYTES = 8 * 1024 * 1024;
 const MAX_QUESTION_CHARS = 1000;
 const MAX_QUESTION_ID_CHARS = 100;
 const MAX_EXAMPLE_CHARS = 1500;
-const MAX_HISTORY_TURNS = 5;
+const MAX_HISTORY_TURNS = 3;
 const MAX_PROFILE_ITEMS = 30;
 const MAX_BARRIER_DETAILS = 12;
 const RATE_LIMIT_PER_MINUTE = 20;
@@ -65,7 +65,7 @@ const QUESTION_MAP: Record<string, { question: string; example: string }> = {
   },
   barriers: {
     question: "¿Hay algo que hoy te dificulte avanzar hacia lo que quieres?",
-    example: "Por ejemplo: falta de tiempo o dinero, responsabilidades en casa, transporte, internet, inseguridad, falta de experiencia o no saber por dónde empezar.",
+    example: "Por ejemplo: falta de tiempo, dinero, internet, transporte, responsabilidades en casa o no saber por dónde empezar.",
   },
 };
 const rateBuckets = new Map<string, { count: number; resetAt: number }>();
@@ -90,8 +90,9 @@ function configuredOrigins() {
 function isAllowedOrigin(origin: string | null) {
   if (!origin) return true;
   if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)) return true;
-  if (/^https:\/\/despega(?:-[a-z0-9-]+)?\.vercel\.app$/i.test(origin)) return true;
+  if (/^https:\/\/despega(?:plus)?(?:-[a-z0-9-]+)?\.vercel\.app$/i.test(origin)) return true;
   if (/^https:\/\/despega(?:-[a-z0-9-]+)?\.netlify\.app$/i.test(origin)) return true;
+  if (/^https:\/\/kas01000101\.github\.io$/i.test(origin)) return true;
   return configuredOrigins().has(origin);
 }
 
@@ -174,7 +175,6 @@ function sanitizeBarrierDetails(value: unknown, maxItems = MAX_BARRIER_DETAILS):
     result.push({ type, description, source_evidence: sourceEvidence });
     if (result.length >= maxItems) break;
   }
-
   return result;
 }
 
@@ -234,10 +234,19 @@ function allowRequest(key: string) {
   return true;
 }
 
-const responseSchema = {
+const transcriptionSchema = {
   type: "OBJECT",
   properties: {
     transcript: { type: "STRING" },
+    speech_detected: { type: "BOOLEAN" },
+    quality: { type: "STRING", enum: ["good", "uncertain", "inaudible"] },
+  },
+  required: ["transcript", "speech_detected", "quality"],
+};
+
+const analysisSchema = {
+  type: "OBJECT",
+  properties: {
     turn_intent: { type: "STRING" },
     control_response: { type: "STRING" },
     nova_reaction: { type: "STRING" },
@@ -280,7 +289,7 @@ const responseSchema = {
     memory_summary: { type: "STRING" },
   },
   required: [
-    "transcript", "turn_intent", "control_response", "nova_reaction", "nova_emotion",
+    "turn_intent", "control_response", "nova_reaction", "nova_emotion",
     "summary", "goals", "interests", "skills", "experience", "barriers", "barrier_details", "training_needs",
     "evidence", "missing_dimensions", "covered_dimensions", "skipped_dimensions",
     "next_dimension", "interview_complete", "answer_sufficiency", "clarification_needed",
@@ -298,8 +307,27 @@ async function persistTurn(args: {
   usefulAnswersCount: number;
   turnsCount: number;
   durationMs: number | null;
+  recordingId: string;
 }) {
   if (!supabaseAdmin || !args.sessionId) return false;
+
+  if (args.recordingId) {
+    const { data: existingTurn, error: duplicateCheckError } = await supabaseAdmin
+      .from("nova_turns")
+      .select("id")
+      .eq("session_id", args.sessionId)
+      .eq("recording_id", args.recordingId)
+      .maybeSingle();
+
+    if (duplicateCheckError) throw duplicateCheckError;
+    if (existingTurn) {
+      console.log("Duplicate recording ignored", JSON.stringify({
+        sessionId: args.sessionId,
+        recordingId: args.recordingId,
+      }));
+      return true;
+    }
+  }
 
   const now = new Date().toISOString();
   const usefulCurrent =
@@ -355,6 +383,7 @@ async function persistTurn(args: {
       follow_up_strategy: text(args.result.follow_up_strategy, 100),
       answer_sufficiency: text(args.result.answer_sufficiency, 100),
       duration_ms: args.durationMs,
+      recording_id: args.recordingId || null,
     });
 
   if (turnError) throw turnError;
@@ -365,21 +394,27 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function geminiRequestBody(prompt: string, audioType: string, audioBase64: string) {
+function geminiRequestBody(
+  prompt: string,
+  responseSchema: Record<string, unknown>,
+  audioType?: string,
+  audioBase64?: string,
+  temperature = 0.2,
+) {
+  const parts: Array<Record<string, unknown>> = [{ text: prompt }];
+  if (audioBase64) {
+    parts.push({
+      inlineData: {
+        mimeType: audioType || "audio/webm",
+        data: audioBase64,
+      },
+    });
+  }
+
   return {
-    contents: [{
-      role: "user",
-      parts: [
-        { text: prompt },
-        {
-          inlineData: {
-            mimeType: audioType || "audio/webm",
-            data: audioBase64,
-          },
-        },
-      ],
-    }],
+    contents: [{ role: "user", parts }],
     generationConfig: {
+      temperature,
       responseMimeType: "application/json",
       responseSchema,
     },
@@ -389,8 +424,10 @@ function geminiRequestBody(prompt: string, audioType: string, audioBase64: strin
 async function callGeminiResilient(args: {
   apiKey: string;
   prompt: string;
-  audioType: string;
-  audioBase64: string;
+  responseSchema: Record<string, unknown>;
+  audioType?: string;
+  audioBase64?: string;
+  temperature?: number;
 }) {
   const attempts = [
     { model: FALLBACK_MODEL, timeoutMs: 4500, label: "primary_fast" },
@@ -410,7 +447,13 @@ async function callGeminiResilient(args: {
       const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(geminiRequestBody(args.prompt, args.audioType, args.audioBase64)),
+        body: JSON.stringify(geminiRequestBody(
+          args.prompt,
+          args.responseSchema,
+          args.audioType,
+          args.audioBase64,
+          args.temperature ?? 0.2,
+        )),
         signal: controller.signal,
       });
 
@@ -519,6 +562,7 @@ Deno.serve(async (req: Request) => {
       }, 429, origin);
     }
 
+    const recordingId = text(form.get("recording_id"), 160) || crypto.randomUUID();
     const question = text(form.get("question"), MAX_QUESTION_CHARS);
     const questionId = text(form.get("question_id"), MAX_QUESTION_ID_CHARS);
     const currentExample = text(form.get("current_example"), MAX_EXAMPLE_CHARS);
@@ -550,7 +594,99 @@ Deno.serve(async (req: Request) => {
     const bytes = new Uint8Array(await audio.arrayBuffer());
     const audioBase64 = toBase64(bytes);
 
+    console.log("Nova transcription start", JSON.stringify({
+      sessionId,
+      recordingId,
+      bytes: audio.size,
+      audioType: audio.type,
+    }));
+
+    const transcriptionPrompt = `
+Transcribe literalmente este audio hablado en español.
+
+REGLAS OBLIGATORIAS:
+- Devuelve exactamente lo que escuchas.
+- No respondas al contenido.
+- No interpretes intención, objetivos, intereses ni habilidades.
+- No uses contexto de conversaciones anteriores.
+- No completes palabras usando conocimiento del dominio.
+- No inventes información.
+- Si no hay voz humana comprensible, speech_detected=false.
+- Si escuchas voz pero hay partes relevantes que no puedes entender, usa quality="uncertain".
+- Si el audio es esencialmente incomprensible, usa quality="inaudible".
+- Usa quality="good" solo cuando la transcripción sea suficientemente clara.
+
+Devuelve únicamente el JSON solicitado por el schema.
+`;
+
+    const transcriptionGemini = await callGeminiResilient({
+      apiKey: geminiKey,
+      prompt: transcriptionPrompt,
+      responseSchema: transcriptionSchema,
+      audioType: audio.type || "audio/webm",
+      audioBase64,
+      temperature: 0,
+    });
+
+    if (!transcriptionGemini.response?.ok) {
+      return json({
+        error: "TRANSCRIPTION_TEMPORARILY_UNAVAILABLE",
+        message: "No pude transcribir el audio en este momento. Intenta otra vez.",
+        retryable: true,
+      }, 503, origin);
+    }
+
+    const transcriptionOutput =
+      transcriptionGemini.payload?.candidates?.[0]?.content?.parts
+        ?.map((part: any) => part?.text || "")
+        .join("")
+        .trim() || "";
+
+    let transcription: Record<string, any>;
+    try {
+      transcription = JSON.parse(transcriptionOutput);
+    } catch {
+      console.error("Invalid transcription JSON", transcriptionOutput.slice(0, 500));
+      return json({ error: "INVALID_TRANSCRIPTION_JSON", retryable: true }, 502, origin);
+    }
+
+    const transcript = text(transcription.transcript, 3000);
+    const speechDetected = Boolean(transcription.speech_detected);
+    const transcriptionQuality = ["good", "uncertain", "inaudible"].includes(String(transcription.quality))
+      ? String(transcription.quality)
+      : "uncertain";
+
+    console.log("Nova transcription result", JSON.stringify({
+      sessionId,
+      recordingId,
+      speechDetected,
+      transcriptionQuality,
+      transcriptLength: transcript.length,
+    }));
+
+    if (!speechDetected || !transcript || transcriptionQuality !== "good") {
+      return json({
+        error: "TRANSCRIPTION_UNCERTAIN",
+        message: "No pude entender bien esa respuesta. Inténtalo otra vez.",
+        retryable: true,
+        recording_id: recordingId,
+        transcript,
+        transcription_quality: transcriptionQuality,
+        speech_detected: speechDetected,
+      }, 422, origin);
+    }
+
     const prompt = `
+TRANSCRIPCIÓN LITERAL E INMUTABLE DEL TURNO:
+${transcript}
+
+REGLA DE EVIDENCIA:
+- Analiza únicamente la transcripción literal anterior.
+- No cambies, completes ni reescribas lo que el usuario dijo.
+- Extrae objetivos, intereses, habilidades, experiencia, barreras y necesidades solo cuando estén explícitamente respaldados por esa transcripción.
+- El contexto histórico sirve para continuidad conversacional, nunca para inventar evidencia del turno actual.
+
+
 Eres NOVA, la guía conversacional de DESPEGA+, una plataforma de orientación educativa y laboral para jóvenes.
 
 IDENTIDAD Y TONO:
@@ -573,15 +709,13 @@ MAPA OFICIAL:
 ${JSON.stringify(QUESTION_MAP)}
 
 REGLAS DE COBERTURA:
-- covered_dimensions debe incluir TODAS las dimensiones que la respuesta actual cubra con evidencia explícita, aunque la pregunta actual persiga una sola dimensión.
+- covered_dimensions debe incluir todas las dimensiones que la respuesta actual cubra con evidencia explícita.
 - skipped_dimensions debe incluir una dimensión solo si el usuario expresa que no sabe, no quiere responder o pide saltarla.
 - No preguntes nuevamente una dimensión cuyo estado ya sea covered o skipped.
-- Una sola respuesta puede cubrir varias dimensiones: extrae goal, interests, skills, experience y barriers de forma independiente.
-- Distingue siempre entre lo que el usuario quiere o le interesa y lo que percibe como dificultad, temor, obstáculo o barrera.
+- Una sola respuesta puede cubrir varias dimensiones.
 - No inventes habilidades, experiencia, barreras ni intereses.
-- No conviertas una barrera, miedo o inseguridad en una conclusión sobre la capacidad de la persona.
-- Si el usuario cuenta experiencia informal, reconócela como experiencia sin exagerar y no la conviertas automáticamente en una habilidad avanzada.
-- Si menciona una barrera, responde con reconocimiento específico y empatía breve, no con entusiasmo.
+- Si el usuario cuenta experiencia informal, reconócela como experiencia sin exagerar.
+- Si menciona una barrera, responde con empatía breve, no con entusiasmo.
 - next_dimension debe ser una de: goal, interests, skills, experience, barriers, o cadena vacía al cerrar.
 - next_question debe corresponder a next_dimension. Puedes adaptar ligeramente la redacción al contexto, pero debe perseguir la misma dimensión.
 - example_response debe ser un ejemplo corto y coherente con next_dimension.
@@ -589,33 +723,22 @@ REGLAS DE COBERTURA:
 - Nunca generes una sexta dimensión.
 
 BARRERAS, SESGOS Y CONTEXTO PERSONAL:
-- barriers sigue siendo una de las 5 dimensiones oficiales. barrier_details es solo metadata estructurada; NO es una sexta dimensión.
-- Clasifica cada barrera explícita en barrier_details usando solo estos tipos: economic, connectivity, education, transport, geographic, time, family_responsibilities, information, confidence, gender_stereotype, discrimination, accessibility, work_experience, digital_skills, documentation, other.
+- barriers sigue siendo una de las 5 dimensiones oficiales. barrier_details es metadata estructurada; NO es una sexta dimensión.
+- Clasifica cada barrera explícita usando solo: economic, connectivity, education, transport, geographic, time, family_responsibilities, information, confidence, gender_stereotype, discrimination, accessibility, work_experience, digital_skills, documentation, other.
 - Cada barrier_details debe incluir type, description y source_evidence basado en palabras realmente expresadas por el usuario.
 - Si el usuario expresa una dificultad relacionada con género, discriminación, estereotipos sociales o sensación de exclusión, trátala como barrera contextual.
 - Nunca presentes un estereotipo como un hecho objetivo.
-- Nunca concluyas que una carrera, profesión o actividad no es apropiada por género, edad, origen, situación económica, zona geográfica u otra característica personal.
+- Nunca concluyas que una carrera o actividad no es apropiada por género, edad, origen, situación económica o zona geográfica.
 - Nunca conviertas inseguridad en falta de capacidad.
 - Nunca reduzcas o descartes una aspiración debido a una barrera expresada.
-- Si una respuesta contiene simultáneamente un interés y una barrera, conserva ambos y marca ambas dimensiones como covered.
-- Las barreras sirven para adaptar el camino hacia una oportunidad, no para eliminar la oportunidad.
-- No moralices, no diagnostiques, no hagas terapia y no atribuyas estados psicológicos que el usuario no haya expresado.
-- Ante discriminación, inseguridad, problemas familiares, dificultades económicas, exclusión o miedo, evita "¡Genial!", "¡Perfecto!", "¡Excelente!", "Qué bueno" o "Fantástico".
-- Mantén la reacción específica, breve y respetuosa.
+- Si una respuesta contiene simultáneamente un interés y una barrera, conserva ambos.
+- No diagnostiques estados psicológicos ni atribuyas estados no expresados por el usuario.
+- Ante discriminación, inseguridad, problemas familiares, dificultades económicas, exclusión o miedo, evita entusiasmo artificial.
 
-EJEMPLOS DE EXTRACCIÓN MULTIDIMENSIONAL:
-1) "Me gusta mecánica pero me siento insegura porque soy mujer."
-   interests=["mecánica"]; barriers=["inseguridad asociada a estereotipos de género en mecánica"]; barrier_details=[{"type":"gender_stereotype","description":"Percibe estereotipos de género como una dificultad para acercarse a mecánica.","source_evidence":"me siento insegura porque soy mujer"}]; covered_dimensions incluye interests y barriers. NO infieras falta de habilidad.
-2) "Quiero terminar secundaria pero tengo que cuidar a mis hermanos."
-   goals=["terminar secundaria"]; barriers incluye responsabilidades familiares/tiempo; barrier_details usa family_responsibilities; covered_dimensions incluye goal y barriers.
-3) "Quiero aprender programación pero solo tengo celular."
-   interests incluye programación; barriers incluye acceso limitado a equipo tecnológico; barrier_details usa connectivity o digital_skills solo según la evidencia literal. No inventes que no tiene internet.
-4) "No creo ser suficientemente buena para estudiar eso."
-   barriers incluye inseguridad/confianza; barrier_details usa confidence. NO agregues skills negativos.
-5) "Ayudo a mi tío reparando motos."
-   experience incluye experiencia informal reparando motos. NO inventes certificación ni dominio avanzado.
-6) "Quiero estudiar diseño, hago afiches para mi colegio y a veces vendo diseños, pero no tengo computadora."
-   goals/interests, experience y barriers pueden quedar cubiertos en el mismo turno.
+EJEMPLOS:
+- "Me gusta mecánica pero me siento insegura porque soy mujer." => interests incluye mecánica; barriers incluye la dificultad contextual; barrier_details usa gender_stereotype. NO infieras falta de habilidad.
+- "Quiero terminar secundaria pero tengo que cuidar a mis hermanos." => goal + family_responsibilities.
+- "Ayudo a mi tío reparando motos." => experience informal. NO inventes certificación ni dominio avanzado.
 
 MÁXIMO DE PREGUNTAS:
 - El frontend tiene un máximo absoluto de 5 preguntas principales.
@@ -642,19 +765,13 @@ CONTROLES:
 - Para interests, mencionar al menos un área, tema o actividad concreta (por ejemplo "tecnología", "diseño", "negocios") ES suficiente: marca interests como covered y NO pidas aclaración adicional.
 - Si es insufficient, no extraigas datos nuevos.
 - profile_completeness entre 0 y 100.
-- memory_summary debe conservar los hechos importantes ya expresados que sirvan para la ruta, especialmente intereses, experiencia y barreras contextuales. No inventes datos, no diagnostiques y no uses lenguaje estigmatizante.
-- Si una barrera ya fue expresada y cubierta, consérvala en memory_summary y no vuelvas a preguntarla.
 
 PERSONALIDAD EN REACCIONES:
-- La reacción debe demostrar que comprendiste el CONTENIDO concreto, no solo que detectaste una categoría.
-- Objetivo claro y no sensible: puedes reconocer brevemente hacia dónde quiere avanzar.
-- Experiencia informal: puedes decir "Eso también cuenta como experiencia." cuando sea pertinente.
-- Barrera: menciona brevemente la dificultad concreta con lenguaje respetuoso y sin convertirla en incapacidad.
-- Ejemplo: "Me gusta mecánica pero me da inseguridad porque soy mujer." => "Entiendo. Te interesa la mecánica, pero también sientes inseguridad por los estereotipos que pueden existir alrededor de esa área."
-- Ejemplo: "Quiero estudiar, pero tengo que cuidar a mis hermanos." => "Entiendo. Quieres seguir estudiando, pero tus responsabilidades en casa pueden hacer más difícil organizar el tiempo."
-- Ejemplo: "Me interesa programación pero solo tengo celular." => "Entiendo. Te interesa programación, pero el acceso a una computadora puede ser una dificultad para empezar."
-- Evita repetir exactamente las mismas frases entre turnos.
-- Mantén nova_reaction en UNA sola frase breve; no conviertas la entrevista en un discurso.
+- Objetivo claro: "Perfecto, ya tengo más claro hacia dónde quieres avanzar."
+- Experiencia informal: "Eso también cuenta como experiencia."
+- Barrera: "Entiendo. Voy a tenerlo en cuenta para tu ruta."
+- Evita repetir exactamente estas frases en todos los turnos.
+- Mantén nova_reaction en una sola frase breve.
 
 PREGUNTA ACTUAL: ${question}
 ID / DIMENSIÓN ACTUAL: ${questionId}
@@ -668,11 +785,13 @@ HISTORIAL RECIENTE: ${JSON.stringify(history)}
 Devuelve solo el JSON solicitado por el schema.
 `
 
+    console.log("Nova analysis start", JSON.stringify({ sessionId, recordingId }));
+
     const gemini = await callGeminiResilient({
       apiKey: geminiKey,
       prompt,
-      audioType: audio.type || "audio/webm",
-      audioBase64,
+      responseSchema: analysisSchema,
+      temperature: 0.2,
     });
     const geminiResponse = gemini.response;
     const payload = gemini.payload;
@@ -707,7 +826,9 @@ Devuelve solo el JSON solicitado por el schema.
       return json({ error: "INVALID_GEMINI_JSON" }, 502, origin);
     }
 
-    result.transcript = text(result.transcript, 3000);
+    result.transcript = transcript;
+    result.transcription_quality = transcriptionQuality;
+    result.recording_id = recordingId;
     result.turn_intent = VALID_INTENTS.has(String(result.turn_intent)) ? String(result.turn_intent) : "answer";
     result.answer_sufficiency = VALID_SUFFICIENCY.has(String(result.answer_sufficiency))
       ? String(result.answer_sufficiency)
@@ -816,13 +937,6 @@ Devuelve solo el JSON solicitado por el schema.
     }
 
     if (result.turn_intent === "answer") {
-      console.log("[NOVA NLP] dimensions_detected", JSON.stringify({
-        dimensions: result.covered_dimensions,
-        barrier_types: result.barrier_details.map((item: BarrierDetail) => item.type),
-        next_dimension: result.next_dimension,
-        interview_complete: result.interview_complete,
-      }));
-
       const projectedStatus = { ...dimensionStatus };
       for (const dimension of result.covered_dimensions) projectedStatus[dimension] = "covered";
       for (const dimension of result.skipped_dimensions) projectedStatus[dimension] = "skipped";
@@ -830,19 +944,12 @@ Devuelve solo el JSON solicitado por el schema.
       const currentIsUseful = result.answer_sufficiency === "sufficient";
       const usefulIncludingCurrent = usefulAnswersCount + (currentIsUseful ? 1 : 0);
 
-      const hasGoal = projectedStatus.goal !== "pending";
-      const hasInterests = projectedStatus.interests !== "pending";
-      const hasSkillOrExperience =
-        projectedStatus.skills !== "pending" ||
-        projectedStatus.experience !== "pending";
-      const hasMinimumRouteProfile = hasGoal && hasInterests && hasSkillOrExperience;
-
-      if (result.interview_complete && (usefulIncludingCurrent < 3 || !hasMinimumRouteProfile)) {
+      if (result.interview_complete && (usefulIncludingCurrent < 3 || resolvedCount < 3)) {
         result.interview_complete = false;
         result.should_finish = false;
       }
 
-      if (resolvedCount === CORE_DIMENSIONS.length && usefulIncludingCurrent >= 3 && hasMinimumRouteProfile) {
+      if (resolvedCount === CORE_DIMENSIONS.length && usefulIncludingCurrent >= 3) {
         result.interview_complete = true;
         result.should_finish = true;
       }
@@ -867,12 +974,20 @@ Devuelve solo el JSON solicitado por el schema.
         usefulAnswersCount,
         turnsCount,
         durationMs,
+        recordingId,
       });
     } catch (error) {
       console.error("Persistence error", error);
     }
 
-    return json({ ...result, persistence_ok: persistenceOk }, 200, origin);
+    return json({
+      ...result,
+      recording_id: recordingId,
+      transcript,
+      transcription_quality: transcriptionQuality,
+      speech_detected: true,
+      persistence_ok: persistenceOk,
+    }, 200, origin);
   } catch (error) {
     console.error(error);
     return json({
