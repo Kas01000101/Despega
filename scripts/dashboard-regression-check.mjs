@@ -5,7 +5,7 @@ const home=js.slice(js.indexOf('function renderHome'),js.indexOf('function route
 const profile=js.slice(js.indexOf('function renderProfile'),js.indexOf('function renderAll'));
 const assertions=[
   ['home excludes profile detail',!home.includes('Barreras detectadas')],
-  ['profile owns Nova content',profile.includes('Lo que detectó Nova')],
+  ['profile owns Nova content',profile.includes('Lo que Nova entendió')],
   ['search exists',js.includes('id="ddSearch"')&&js.includes('filteredCatalog')],
   ['save exists',js.includes('toggleSaved')&&js.includes('data-dd-save')],
   ['details exist',js.includes('openDetails')&&js.includes('despegaViewedOpportunities')],
