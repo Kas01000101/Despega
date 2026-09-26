@@ -3662,6 +3662,11 @@ main{width:100%;height:100%}
     stopReason: 'manual',
     turnSequence: 0,
     activeTurnId: 0,
+    listenTurnToken: 0,
+    activeRecordingId: null,
+    processedRecordingIds: new Set(),
+    activeRequestRecordingId: null,
+    isSendingAudio: false,
     listenRecoveryAttempts: 0,
     listenWatchdog: null,
     askedCount: Object.fromEntries(NOVA_CORE_DIMENSIONS.map((dimension) => [dimension, 0]))
@@ -4215,6 +4220,11 @@ main{width:100%;height:100%}
     interview.autoListenEnabled = true;
     interview.noSpeechReminderCount = 0;
     interview.stopReason = 'manual';
+    interview.listenTurnToken += 1;
+    interview.activeRecordingId = null;
+    interview.activeRequestRecordingId = null;
+    interview.isSendingAudio = false;
+    interview.processedRecordingIds.clear();
 
     localStorage.setItem('despegaInterviewSession', sessionId);
     localStorage.setItem('despegaCurrentQuestionId', interview.questionId);
@@ -4461,6 +4471,10 @@ main{width:100%;height:100%}
 
   function cleanupNova() {
     interview.lifecycleId += 1;
+    interview.listenTurnToken += 1;
+    interview.activeRecordingId = null;
+    interview.activeRequestRecordingId = null;
+    interview.isSendingAudio = false;
 
     clearTimeout(interview.enterTimer);
     clearTimeout(interview.maxTimer);
@@ -4498,6 +4512,7 @@ main{width:100%;height:100%}
 
     interview.isProcessing = false;
     interview.pendingResult = null;
+    interview.processedRecordingIds.clear();
     stopSpeaking();
 
     recordAnswerButton?.classList.remove('recording');
