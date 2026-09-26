@@ -149,6 +149,86 @@ function stringArray(value: unknown, maxItems = MAX_PROFILE_ITEMS) {
   return result;
 }
 
+type EvidenceItem = {
+  value: string;
+  evidence: string;
+};
+
+const EVIDENCE_STOPWORDS = new Set([
+  "para", "pero", "porque", "como", "esta", "este", "esto", "tengo", "quiero",
+  "gustaria", "gusta", "tambien", "algo", "mucho", "poco", "hacer", "aprender",
+]);
+
+function normalizeForEvidence(value: unknown) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9ñ\s]/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function evidenceAppearsInTranscript(evidence: unknown, transcript: string) {
+  const normalizedEvidence = normalizeForEvidence(evidence);
+  const normalizedTranscript = normalizeForEvidence(transcript);
+  return Boolean(
+    normalizedEvidence &&
+    normalizedEvidence.length >= 2 &&
+    normalizedTranscript.includes(normalizedEvidence)
+  );
+}
+
+function meaningfulEvidenceTokens(value: unknown) {
+  return normalizeForEvidence(value)
+    .split(" ")
+    .filter((token) => token.length >= 4 && !EVIDENCE_STOPWORDS.has(token));
+}
+
+function hasLexicalSupport(value: string, evidence: string, transcript: string) {
+  const normalizedValue = normalizeForEvidence(value);
+  const normalizedEvidence = normalizeForEvidence(evidence);
+  const normalizedTranscript = normalizeForEvidence(transcript);
+  if (!normalizedValue) return false;
+  if (normalizedEvidence.includes(normalizedValue) || normalizedTranscript.includes(normalizedValue)) return true;
+
+  const valueTokens = meaningfulEvidenceTokens(value);
+  const supportTokens = new Set(meaningfulEvidenceTokens(`${evidence} ${transcript}`));
+  return valueTokens.some((token) => {
+    if (supportTokens.has(token)) return true;
+    if (token.length < 5) return false;
+    const stem = token.slice(0, 5);
+    return [...supportTokens].some((candidate) =>
+      candidate.length >= 5 && (candidate.startsWith(stem) || token.startsWith(candidate.slice(0, 5)))
+    );
+  });
+}
+
+function sanitizeEvidenceItems(value: unknown, transcript: string, maxItems = MAX_PROFILE_ITEMS): EvidenceItem[] {
+  if (!Array.isArray(value)) return [];
+  const result: EvidenceItem[] = [];
+  const seen = new Set<string>();
+
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+    const rawValue = text(row.value, 500);
+    const evidence = text(row.evidence, 500);
+    if (!rawValue || !evidenceAppearsInTranscript(evidence, transcript)) continue;
+
+    // Fail closed: if the semantic label is not lexically grounded, persist the literal evidence instead.
+    const safeValue = hasLexicalSupport(rawValue, evidence, transcript) ? rawValue : evidence;
+    const key = `${normalizeForEvidence(safeValue)}|${normalizeForEvidence(evidence)}`;
+    if (!key || seen.has(key)) continue;
+
+    seen.add(key);
+    result.push({ value: safeValue, evidence });
+    if (result.length >= maxItems) break;
+  }
+
+  return result;
+}
+
 type BarrierDetail = {
   type: string;
   description: string;
@@ -244,6 +324,15 @@ const transcriptionSchema = {
   required: ["transcript", "speech_detected", "quality"],
 };
 
+const evidenceItemSchema = {
+  type: "OBJECT",
+  properties: {
+    value: { type: "STRING" },
+    evidence: { type: "STRING" },
+  },
+  required: ["value", "evidence"],
+};
+
 const analysisSchema = {
   type: "OBJECT",
   properties: {
@@ -252,11 +341,11 @@ const analysisSchema = {
     nova_reaction: { type: "STRING" },
     nova_emotion: { type: "STRING" },
     summary: { type: "STRING" },
-    goals: { type: "ARRAY", items: { type: "STRING" } },
-    interests: { type: "ARRAY", items: { type: "STRING" } },
-    skills: { type: "ARRAY", items: { type: "STRING" } },
-    experience: { type: "ARRAY", items: { type: "STRING" } },
-    barriers: { type: "ARRAY", items: { type: "STRING" } },
+    goals: { type: "ARRAY", items: evidenceItemSchema },
+    interests: { type: "ARRAY", items: evidenceItemSchema },
+    skills: { type: "ARRAY", items: evidenceItemSchema },
+    experience: { type: "ARRAY", items: evidenceItemSchema },
+    barriers: { type: "ARRAY", items: evidenceItemSchema },
     barrier_details: {
       type: "ARRAY",
       items: {
@@ -269,7 +358,7 @@ const analysisSchema = {
         required: ["type", "description", "source_evidence"],
       },
     },
-    training_needs: { type: "ARRAY", items: { type: "STRING" } },
+    training_needs: { type: "ARRAY", items: evidenceItemSchema },
     evidence: { type: "ARRAY", items: { type: "STRING" } },
     missing_dimensions: { type: "ARRAY", items: { type: "STRING" } },
     covered_dimensions: { type: "ARRAY", items: { type: "STRING" } },
@@ -707,8 +796,12 @@ ${transcript}
 REGLA DE EVIDENCIA:
 - Analiza únicamente la transcripción literal anterior.
 - No cambies, completes ni reescribas lo que el usuario dijo.
-- Extrae objetivos, intereses, habilidades, experiencia, barreras y necesidades solo cuando estén explícitamente respaldados por esa transcripción.
-- El contexto histórico sirve para continuidad conversacional, nunca para inventar evidencia del turno actual.
+- goals, interests, skills, experience, barriers y training_needs deben ser arrays de objetos { value, evidence }.
+- evidence debe copiar literalmente una frase presente en la TRANSCRIPCIÓN LITERAL del turno actual.
+- No uses el perfil previo, historial, pregunta ni ejemplos como evidence.
+- Si no existe una frase literal que respalde un dato, NO lo extraigas.
+- No inventes una etiqueta semántica a partir de una evidencia no relacionada.
+- El contexto histórico sirve para continuidad conversacional, nunca para crear evidencia del turno actual.
 
 
 Eres NOVA, la guía conversacional de DESPEGA+, una plataforma de orientación educativa y laboral para jóvenes.
@@ -874,17 +967,43 @@ Devuelve solo el JSON solicitado por el schema.
     result.final_message = text(result.final_message, 1000);
     result.memory_summary = text(result.memory_summary, 1500);
 
-    for (const field of PROFILE_FIELDS) result[field] = stringArray(result[field]);
-    result.barrier_details = sanitizeBarrierDetails(result.barrier_details);
-    result.evidence = stringArray(result.evidence, 20);
+    for (const field of PROFILE_FIELDS) {
+      result[field] = sanitizeEvidenceItems(result[field], transcript);
+    }
+
+    result.barrier_details = sanitizeBarrierDetails(result.barrier_details)
+      .filter((item: BarrierDetail) => evidenceAppearsInTranscript(item.source_evidence, transcript));
+
+    result.evidence = Array.from(new Set(
+      PROFILE_FIELDS.flatMap((field) =>
+        (Array.isArray(result[field]) ? result[field] : [])
+          .map((item: EvidenceItem) => item.evidence)
+          .filter(Boolean)
+      )
+    )).slice(0, 20);
+
+    const evidenceBackedDimensions = new Set<string>();
+    if (result.goals.length) evidenceBackedDimensions.add("goal");
+    if (result.interests.length) evidenceBackedDimensions.add("interests");
+    if (result.skills.length) evidenceBackedDimensions.add("skills");
+    if (result.experience.length) evidenceBackedDimensions.add("experience");
+    if (result.barriers.length) evidenceBackedDimensions.add("barriers");
     result.missing_dimensions = stringArray(result.missing_dimensions, 10);
-    result.covered_dimensions = stringArray(result.covered_dimensions, 5).filter((value) => VALID_DIMENSIONS.has(value));
+    result.covered_dimensions = stringArray(result.covered_dimensions, 5)
+      .filter((value) => VALID_DIMENSIONS.has(value) && evidenceBackedDimensions.has(value));
     result.skipped_dimensions = stringArray(result.skipped_dimensions, 5).filter((value) => VALID_DIMENSIONS.has(value));
     result.next_dimension = VALID_DIMENSIONS.has(String(result.next_dimension || ""))
       ? String(result.next_dimension)
       : "";
     result.interview_complete = Boolean(result.interview_complete);
     result.should_finish = result.interview_complete;
+
+    console.log("Nova evidence validated", JSON.stringify({
+      sessionId,
+      recordingId,
+      accepted: Object.fromEntries(PROFILE_FIELDS.map((field) => [field, result[field].length])),
+      evidenceCount: result.evidence.length,
+    }));
 
     if (result.turn_intent === "answer" && questionId === "interests") {
       const transcript = String(result.transcript || "").trim();
