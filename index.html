@@ -3650,6 +3650,7 @@ main{width:100%;height:100%}
     lifecycleId: 0,
     isProcessing: false,
     welcomePlayed: sessionStorage.getItem('despegaAgentWelcomed') === (localStorage.getItem('despegaInterviewSession') || ''),
+    welcomeInProgress: false,
     agentState: 'idle',
     audioContext: null,
     analyser: null,
@@ -3998,7 +3999,7 @@ main{width:100%;height:100%}
   }
 
   async function enterStep3Agent() {
-    if (currentStep !== 'step3' || recordingId !== interview.activeRecordingId) return;
+    if (currentStep !== 'step3') return;
     refreshAgentIdentity();
     refreshInterviewUI();
 
@@ -4011,8 +4012,11 @@ main{width:100%;height:100%}
       return;
     }
 
-    interview.welcomePlayed = true;
-    sessionStorage.setItem('despegaAgentWelcomed', interview.sessionId);
+    if (interview.welcomeInProgress) return;
+
+    const lifecycle = interview.lifecycleId;
+    interview.welcomeInProgress = true;
+
     const name = getInterviewFirstName();
     setAgentEmotion('happy');
     const intro = name
@@ -4025,9 +4029,28 @@ main{width:100%;height:100%}
     );
 
     novaTurnLog('tts_start', { source: 'welcome' });
-    await speakText(welcome, false).catch((error) => console.warn('[NOVA TTS] welcome_failed', error));
-    novaTurnLog('tts_end', { source: 'welcome' });
-    if (currentStep === 'step3' && interview.autoListenEnabled) {
+    const welcomeSpeech = await speakText(welcome, false)
+      .catch((error) => {
+        console.warn('[NOVA TTS] welcome_failed', error);
+        return { ok: false, reason: 'unexpected' };
+      });
+    novaTurnLog('tts_end', { source: 'welcome', ok: Boolean(welcomeSpeech?.ok) });
+
+    if (currentStep !== 'step3' || lifecycle !== interview.lifecycleId) {
+      interview.welcomeInProgress = false;
+      return;
+    }
+
+    interview.welcomeInProgress = false;
+    if (welcomeSpeech?.ok) {
+      interview.welcomePlayed = true;
+      sessionStorage.setItem('despegaAgentWelcomed', interview.sessionId);
+    } else {
+      interview.welcomePlayed = false;
+      sessionStorage.removeItem('despegaAgentWelcomed');
+    }
+
+    if (interview.autoListenEnabled) {
       await resumeListeningAfterSpeech('welcome');
     }
   }
@@ -4286,6 +4309,7 @@ main{width:100%;height:100%}
     interview.stopRequested = false;
     interview.isProcessing = false;
     interview.welcomePlayed = false;
+    interview.welcomeInProgress = false;
     interview.agentState = 'idle';
     interview.speechDetected = false;
     interview.autoListenEnabled = true;
@@ -4546,6 +4570,7 @@ main{width:100%;height:100%}
     interview.activeRecordingId = null;
     interview.activeRequestRecordingId = null;
     interview.isSendingAudio = false;
+    interview.welcomeInProgress = false;
 
     clearTimeout(interview.enterTimer);
     clearTimeout(interview.maxTimer);
@@ -4785,8 +4810,12 @@ main{width:100%;height:100%}
     if (interview.requestTimeout) clearTimeout(interview.requestTimeout);
 
     const controller = new AbortController();
+    let requestTimedOut = false;
     interview.requestController = controller;
-    interview.requestTimeout = setTimeout(() => controller.abort(), 15000);
+    interview.requestTimeout = setTimeout(() => {
+      requestTimedOut = true;
+      controller.abort();
+    }, 15000);
 
     const form = new FormData();
     form.append('audio', audioBlob, `despega-${Date.now()}.${audioBlob.type.includes('ogg') ? 'ogg' : audioBlob.type.includes('mp4') ? 'm4a' : 'webm'}`);
@@ -4834,6 +4863,14 @@ main{width:100%;height:100%}
       console.log('[NOVA] Gemini result', payload);
       novaTurnLog('api_200', { questionId: requestMeta.questionId || interview.questionId });
       return payload;
+    } catch (error) {
+      if (error?.name === 'AbortError' && requestTimedOut) {
+        const timeoutError = new Error('No pudimos procesar la respuesta a tiempo. Inténtalo nuevamente.');
+        timeoutError.name = 'AbortError';
+        timeoutError.code = 'REQUEST_TIMEOUT';
+        throw timeoutError;
+      }
+      throw error;
     } finally {
       if (interview.requestController === controller) {
         if (interview.requestTimeout) clearTimeout(interview.requestTimeout);
@@ -5475,10 +5512,31 @@ main{width:100%;height:100%}
 
       if (!vadStarted) {
         interview.vadActive = false;
+
+        if (event) {
+          interview.speechDetected = true;
+          setAgentState('listening');
+          if (recordCaption) recordCaption.textContent = 'Grabando…';
+          if (recordHelper) recordHelper.textContent = 'Toca el micrófono otra vez cuando termines.';
+          setVoiceStatus('Grabando manualmente…', 'processing');
+          novaTurnLog('vad_manual_fallback', { recorderState: recorder.state, recordingId });
+
+          interview.durationTimer = setInterval(() => {
+            const seconds = (Date.now() - interview.startedAt) / 1000;
+            setVoiceStatus(`Grabando… ${formatSecondsToClock(seconds)}`, 'processing');
+          }, 250);
+          interview.maxTimer = setTimeout(
+            () => stopRealRecording('max_duration'),
+            DESPEGA_AI.maxRecordingSeconds * 1000
+          );
+          return true;
+        }
+
+        cancelRecordingWithoutProcessing();
         setAgentState('paused');
         showNovaNotice('No pude activar la escucha automática', 'Toca el micrófono para continuar.', 'paused');
         if (recordCaption) recordCaption.textContent = 'Toca el micrófono para continuar';
-        if (recordHelper) recordHelper.textContent = 'La grabación automática no pudo iniciarse correctamente.';
+        if (recordHelper) recordHelper.textContent = 'La escucha automática no pudo iniciarse correctamente.';
         setVoiceStatus('La escucha automática no está disponible.', 'error');
         novaTurnLog('vad_start_failed', { recorderState: interview.mediaRecorder?.state || 'none' });
         return false;
@@ -5568,6 +5626,7 @@ main{width:100%;height:100%}
       return;
     }
 
+    const processingLifecycle = interview.lifecycleId;
     const type = recorder?.mimeType || chunks[0]?.type || 'audio/webm';
     const blob = new Blob(chunks, { type });
     const durationMs = interview.lastRecordingDurationMs || Math.max(0, Date.now() - interview.startedAt);
@@ -5674,11 +5733,46 @@ main{width:100%;height:100%}
       if (accepted) console.log('[NOVA AUDIO] turn_completed', { recordingId });
     } catch (error) {
       if (error?.name === 'AbortError') {
-        console.log('[NOVA] request aborted');
+        console.log('[NOVA] request aborted', { code: error?.code || 'ABORTED' });
+
+        if (currentStep !== 'step3' || processingLifecycle !== interview.lifecycleId) {
+          return;
+        }
+
         setInterviewBusy(false);
-        setAgentState('error');
-        showNovaNotice('No pude procesar esa respuesta', 'Toca el micrófono para intentarlo otra vez.', 'error');
         resetForRecording();
+        setAgentState('error');
+        const timeoutMessage = error?.code === 'REQUEST_TIMEOUT'
+          ? 'La respuesta tardó demasiado. Toca el micrófono para intentarlo otra vez.'
+          : 'Toca el micrófono para intentarlo otra vez.';
+        showNovaNotice('No pude procesar esa respuesta', timeoutMessage, 'error');
+        setVoiceStatus(timeoutMessage, 'error');
+        return;
+      }
+
+      const qualityMessages = {
+        NO_SPEECH_DETECTED: {
+          title: 'No detecté una respuesta hablada',
+          message: 'Toca el micrófono para intentarlo otra vez.'
+        },
+        TRANSCRIPTION_UNCERTAIN: {
+          title: 'No pude entender bien esa respuesta',
+          message: 'Toca el micrófono para intentarlo otra vez.'
+        },
+        AUDIO_INAUDIBLE: {
+          title: 'No pude escuchar con suficiente claridad',
+          message: 'Revisa tu micrófono e inténtalo otra vez.'
+        }
+      };
+
+      const qualityFailure = qualityMessages[error?.code];
+      if (qualityFailure) {
+        console.warn('[NOVA AUDIO] quality_rejected', { recordingId, code: error.code });
+        setInterviewBusy(false);
+        resetForRecording();
+        setAgentState('paused');
+        showNovaNotice(qualityFailure.title, qualityFailure.message, 'paused');
+        setVoiceStatus(qualityFailure.message, 'error');
         return;
       }
 
@@ -5687,6 +5781,7 @@ main{width:100%;height:100%}
       if (networkFailure) {
         try {
           await idbPutVoice(queueItem);
+          interview.processedRecordingIds.delete(recordingId);
           queuedForRetry = true;
         } catch {}
       }
@@ -5941,6 +6036,13 @@ main{width:100%;height:100%}
     }
 
     result = validatedResult;
+
+    if (
+      expectedRecordingId &&
+      interview.activeRecordingId === expectedRecordingId
+    ) {
+      interview.activeRecordingId = null;
+    }
 
     if (isControlIntent(result)) {
       await handleControlIntent(result);
