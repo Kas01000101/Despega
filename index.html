@@ -3307,6 +3307,40 @@ main{width:100%;height:100%}
 
   const NOVA_DEBUG = true;
 
+  const NOVA_STATE_VERSION = 3;
+  const NOVA_STEP3_STORAGE_KEYS = Object.freeze([
+    'despegaInterviewSession',
+    'despegaInterviewAnswers',
+    'despegaInterviewUsefulAnswers',
+    'despegaInterviewMainQuestions',
+    'despegaInterviewClarifications',
+    'despegaInterviewAskedCount',
+    'despegaDimensionAttempts',
+    'despegaCurrentQuestionId',
+    'despegaCurrentQuestion',
+    'despegaCurrentExample',
+    'despegaAIProfile',
+    'despegaConversationHistory',
+    'despegaDimensionStatus',
+    'despegaRegisterStep3'
+  ]);
+
+  function ensureNovaStateVersion() {
+    const storedVersion = Number(localStorage.getItem('despegaNovaStateVersion') || 0);
+    if (storedVersion === NOVA_STATE_VERSION) return false;
+
+    for (const key of NOVA_STEP3_STORAGE_KEYS) localStorage.removeItem(key);
+    sessionStorage.removeItem('despegaAgentWelcomed');
+    localStorage.setItem('despegaNovaStateVersion', String(NOVA_STATE_VERSION));
+    console.log('[NOVA STATE] incompatible_state_reset', {
+      previousVersion: storedVersion,
+      currentVersion: NOVA_STATE_VERSION
+    });
+    return true;
+  }
+
+  ensureNovaStateVersion();
+
   function novaVadDebug(event, payload = {}) {
     if (!NOVA_DEBUG) return;
     console.log(`[NOVA VAD] ${event}`, payload);
@@ -3979,6 +4013,70 @@ main{width:100%;height:100%}
     localStorage.setItem('despegaInterviewAskedCount', JSON.stringify(interview.askedCount));
   }
 
+  function defaultDimensionAttempts() {
+    return Object.fromEntries(NOVA_CORE_DIMENSIONS.map((dimension) => [
+      dimension,
+      { mainAsked: 0, clarificationAsked: 0, exhausted: false }
+    ]));
+  }
+
+  function loadDimensionAttempts() {
+    const attempts = defaultDimensionAttempts();
+    try {
+      const stored = JSON.parse(localStorage.getItem('despegaDimensionAttempts') || '{}');
+      for (const dimension of NOVA_CORE_DIMENSIONS) {
+        const row = stored?.[dimension] || {};
+        attempts[dimension] = {
+          mainAsked: Math.max(0, Math.min(1, Number(row.mainAsked || 0))),
+          clarificationAsked: Math.max(0, Math.min(1, Number(row.clarificationAsked || 0))),
+          exhausted: Boolean(row.exhausted)
+        };
+      }
+    } catch {}
+    return attempts;
+  }
+
+  function persistDimensionAttempts() {
+    localStorage.setItem('despegaDimensionAttempts', JSON.stringify(interview.dimensionAttempts));
+  }
+
+  function syncLegacyAskedCount(dimension) {
+    if (!NOVA_DIMENSION_SET.has(dimension)) return;
+    const attempt = interview.dimensionAttempts?.[dimension] || { mainAsked: 0, clarificationAsked: 0 };
+    interview.askedCount[dimension] = Number(attempt.mainAsked || 0) + Number(attempt.clarificationAsked || 0);
+    persistAskedCount();
+  }
+
+  function registerPresentedQuestion(dimension, kind = 'main', incrementGlobal = true) {
+    if (!NOVA_DIMENSION_SET.has(dimension)) return;
+    const attempt = interview.dimensionAttempts[dimension] || { mainAsked: 0, clarificationAsked: 0, exhausted: false };
+
+    if (kind === 'clarification') {
+      if (attempt.clarificationAsked >= 1) {
+        attempt.exhausted = true;
+      } else {
+        attempt.clarificationAsked = 1;
+        if (incrementGlobal) {
+          interview.clarificationsAsked += 1;
+          localStorage.setItem('despegaInterviewClarifications', String(interview.clarificationsAsked));
+        }
+      }
+    } else if (attempt.mainAsked < 1) {
+      attempt.mainAsked = 1;
+      if (incrementGlobal) {
+        interview.mainQuestionsAsked = Math.min(
+          DESPEGA_AI.maxInterviewQuestions,
+          interview.mainQuestionsAsked + 1
+        );
+        localStorage.setItem('despegaInterviewMainQuestions', String(interview.mainQuestionsAsked));
+      }
+    }
+
+    interview.dimensionAttempts[dimension] = attempt;
+    persistDimensionAttempts();
+    syncLegacyAskedCount(dimension);
+  }
+
   const interview = {
     sessionId: localStorage.getItem('despegaInterviewSession') || (crypto.randomUUID?.() || `session-${Date.now()}`),
     answersCount: Number(localStorage.getItem('despegaInterviewAnswers') || 0),
@@ -4030,6 +4128,8 @@ main{width:100%;height:100%}
     vadReady: false,
     audioSource: null,
     speechDetected: false,
+    currentNoiseFloor: 0,
+    currentVadThreshold: 0,
     detectedTurn: null,
     perfMarks: Object.create(null),
     autoListenEnabled: true,
@@ -4045,13 +4145,22 @@ main{width:100%;height:100%}
     listenRecoveryAttempts: 0,
     listenWatchdog: null,
     processingWatchdog: null,
-    askedCount: loadAskedCount()
+    askedCount: loadAskedCount(),
+    dimensionAttempts: loadDimensionAttempts()
   };
 
   localStorage.setItem('despegaInterviewSession', interview.sessionId);
+  localStorage.setItem('despegaNovaStateVersion', String(NOVA_STATE_VERSION));
   if (NOVA_DIMENSION_SET.has(interview.questionId)) {
-    interview.askedCount[interview.questionId] = Math.max(1, Number(interview.askedCount[interview.questionId] || 0));
-    persistAskedCount();
+    const attempt = interview.dimensionAttempts[interview.questionId] || {
+      mainAsked: 0,
+      clarificationAsked: 0,
+      exhausted: false
+    };
+    attempt.mainAsked = Math.max(1, Number(attempt.mainAsked || 0));
+    interview.dimensionAttempts[interview.questionId] = attempt;
+    persistDimensionAttempts();
+    syncLegacyAskedCount(interview.questionId);
   }
 
   const playExampleButton = $('#playExampleButton');
@@ -4359,10 +4468,13 @@ main{width:100%;height:100%}
     const preferredDimension = String(preferred || '').trim();
     if (
       NOVA_DIMENSION_SET.has(preferredDimension) &&
-      interview.dimensionStatus?.[preferredDimension] === 'pending'
+      interview.dimensionStatus?.[preferredDimension] === 'pending' &&
+      !interview.dimensionAttempts?.[preferredDimension]?.exhausted
     ) return preferredDimension;
     return NOVA_CORE_DIMENSIONS.find(
-      (dimension) => interview.dimensionStatus?.[dimension] === 'pending'
+      (dimension) =>
+        interview.dimensionStatus?.[dimension] === 'pending' &&
+        !interview.dimensionAttempts?.[dimension]?.exhausted
     ) || '';
   }
 
@@ -4832,6 +4944,7 @@ main{width:100%;height:100%}
       'despegaInterviewMainQuestions',
       'despegaInterviewClarifications',
       'despegaInterviewAskedCount',
+      'despegaDimensionAttempts',
       'despegaCurrentQuestionId',
       'despegaCurrentQuestion',
       'despegaCurrentExample',
@@ -4879,11 +4992,15 @@ main{width:100%;height:100%}
     interview.isSendingAudio = false;
     interview.processedRecordingIds.clear();
     interview.askedCount = Object.fromEntries(NOVA_CORE_DIMENSIONS.map((dimension) => [dimension, 0]));
-    interview.askedCount.goal = 1;
+    interview.dimensionAttempts = defaultDimensionAttempts();
+    interview.dimensionAttempts.goal.mainAsked = 1;
+    syncLegacyAskedCount('goal');
 
     localStorage.setItem('despegaInterviewSession', sessionId);
+    localStorage.setItem('despegaNovaStateVersion', String(NOVA_STATE_VERSION));
     localStorage.setItem('despegaInterviewMainQuestions', '1');
     localStorage.setItem('despegaInterviewClarifications', '0');
+    persistDimensionAttempts();
     persistAskedCount();
     localStorage.setItem('despegaCurrentQuestionId', interview.questionId);
     localStorage.setItem('despegaCurrentQuestion', interview.currentQuestion);
@@ -4980,11 +5097,7 @@ main{width:100%;height:100%}
 
       const mapped = NOVA_QUESTIONS[nextDimension];
       if (nextDimension !== interview.questionId) {
-        interview.mainQuestionsAsked = Math.min(
-          DESPEGA_AI.maxInterviewQuestions,
-          interview.mainQuestionsAsked + 1
-        );
-        localStorage.setItem('despegaInterviewMainQuestions', String(interview.mainQuestionsAsked));
+        registerPresentedQuestion(nextDimension, 'main');
       }
       interview.questionId = nextDimension;
       interview.currentQuestion = String(result?.next_question || '').trim() || mapped.question;
@@ -5415,6 +5528,15 @@ main{width:100%;height:100%}
     form.append('conversation_history', JSON.stringify((requestMeta.conversationHistory || interview.conversationHistory || []).slice(-2)));
     form.append('current_example', requestMeta.currentExample || interview.currentExample || '');
     form.append('duration_ms', String(Number.isFinite(requestMeta.durationMs) ? requestMeta.durationMs : (interview.lastRecordingDurationMs || 0)));
+    form.append('stop_reason', String(requestMeta.stopReason || interview.stopReason || ''));
+    form.append('blob_size', String(Number.isFinite(requestMeta.blobSize) ? requestMeta.blobSize : (audioBlob instanceof Blob ? audioBlob.size : 0)));
+    form.append('mime_type', String(requestMeta.mimeType || (audioBlob instanceof Blob ? audioBlob.type : '')));
+    form.append('noise_floor', String(Number.isFinite(requestMeta.noiseFloor) ? requestMeta.noiseFloor : (interview.currentNoiseFloor || 0)));
+    form.append('vad_threshold', String(Number.isFinite(requestMeta.vadThreshold) ? requestMeta.vadThreshold : (interview.currentVadThreshold || 0)));
+    form.append('transcription_quality', String(requestMeta.transcriptionQuality || ''));
+    form.append('transcription_model', String(requestMeta.transcriptionModel || ''));
+    form.append('transcription_ms', String(Number(requestMeta.transcriptionMs || 0)));
+    form.append('transcription_fallback_used', String(Boolean(requestMeta.transcriptionFallbackUsed)));
     form.append('recording_id', requestMeta.recordingId || requestMeta.id || '');
     form.append('onboarding_data', JSON.stringify(loadPriorProfile()));
     form.append('dimension_status', JSON.stringify(requestMeta.dimensionStatus || interview.dimensionStatus || defaultDimensionStatus()));
@@ -5701,7 +5823,12 @@ main{width:100%;height:100%}
         recordingId !== interview.activeRecordingId
       ) return false;
 
-      if (isActuallyListening()) return true;
+      if (
+        interview.vadActive === true &&
+        interview.vadReady === true &&
+        interview.audioContext?.state === 'running' &&
+        interview.activeRecordingId
+      ) return true;
       await new Promise(resolve => setTimeout(resolve, 30));
     }
     novaTurnLog('vad_ready_timeout', {
@@ -5870,7 +5997,7 @@ main{width:100%;height:100%}
         lifecycle !== interview.lifecycleId ||
         listenToken !== interview.listenTurnToken ||
         recordingId !== interview.activeRecordingId ||
-        interview.recordingState !== 'recording'
+        !['starting', 'recording'].includes(interview.recordingState)
       ) return;
 
       const now = performance.now();
@@ -5893,13 +6020,13 @@ main{width:100%;height:100%}
           calibrated = true;
           listeningStartedAt = performance.now();
           interview.vadReady = Boolean(
-            interview.recordingState === 'recording' &&
-            interview.mediaRecorder?.state === 'recording' &&
             interview.vadActive &&
             interview.audioContext?.state === 'running' &&
             recordingId === interview.activeRecordingId &&
             listenToken === interview.listenTurnToken
           );
+          interview.currentNoiseFloor = Number(base.toFixed(5));
+          interview.currentVadThreshold = Number(threshold.toFixed(5));
 
           novaVadDebug('calibration_complete', {
             noiseFloor: Number(base.toFixed(5)),
@@ -5931,6 +6058,14 @@ main{width:100%;height:100%}
           });
         }
 
+        interview.vadFrame = requestAnimationFrame(loop);
+        return;
+      }
+
+      if (
+        interview.recordingState !== 'recording' ||
+        interview.mediaRecorder?.state !== 'recording'
+      ) {
         interview.vadFrame = requestAnimationFrame(loop);
         return;
       }
@@ -6138,6 +6273,8 @@ main{width:100%;height:100%}
     interview.stopReason = 'manual';
     interview.lastRecordingDurationMs = 0;
     interview.speechDetected = false;
+    interview.currentNoiseFloor = 0;
+    interview.currentVadThreshold = 0;
     stopSpeaking();
     aiConfirmation.hidden = true;
     if (recordAnswerButton) recordAnswerButton.disabled = true;
@@ -6187,27 +6324,6 @@ main{width:100%;height:100%}
         console.error('[NOVA AUDIO]', event?.error || event);
       };
 
-      recorder.start();
-
-      if (recorder.state !== 'recording') {
-        throw microphoneError('MEDIA_RECORDER_NOT_RECORDING', 'No pude iniciar la grabación del micrófono.');
-      }
-
-      interview.startedAt = Date.now();
-      interview.recordingState = 'recording';
-      novaTurnLog('recorder_started', { state: recorder.state, recordingId });
-
-      recordAnswerButton?.classList.add('recording');
-      recordAnswerButton?.setAttribute('aria-pressed', 'true');
-      recordAnswerButton?.setAttribute('aria-label', 'Detener respuesta manualmente');
-      if (recordAnswerButton) recordAnswerButton.disabled = false;
-      if (recordCaption) recordCaption.textContent = 'Preparando escucha…';
-      if (recordHelper) recordHelper.textContent = '';
-      setAgentState('arming');
-      setVoiceStatus('Preparando escucha…', 'processing');
-      console.log('[NOVA] recorder started', interview.mediaRecorder.mimeType);
-      novaTurnLog('recording_start', { mimeType: interview.mediaRecorder.mimeType });
-
       let vadStarted = false;
       try {
         vadStarted = await startVoiceActivityDetection(stream, lifecycle, listenToken, recordingId);
@@ -6220,8 +6336,19 @@ main{width:100%;height:100%}
         interview.vadActive = false;
 
         if (event) {
+          recorder.start();
+          if (recorder.state !== 'recording') {
+            throw microphoneError('MEDIA_RECORDER_NOT_RECORDING', 'No pude iniciar la grabación del micrófono.');
+          }
+
+          interview.startedAt = Date.now();
+          interview.recordingState = 'recording';
           interview.speechDetected = true;
           setAgentState('listening');
+          recordAnswerButton?.classList.add('recording');
+          recordAnswerButton?.setAttribute('aria-pressed', 'true');
+          recordAnswerButton?.setAttribute('aria-label', 'Detener respuesta manualmente');
+          if (recordAnswerButton) recordAnswerButton.disabled = false;
           if (recordCaption) recordCaption.textContent = 'Grabando…';
           if (recordHelper) recordHelper.textContent = 'Toca el micrófono otra vez cuando termines.';
           setVoiceStatus('Grabando manualmente…', 'processing');
@@ -6257,6 +6384,29 @@ main{width:100%;height:100%}
         cancelRecordingWithoutProcessing();
         return false;
       }
+
+      recorder.start();
+      if (recorder.state !== 'recording') {
+        throw microphoneError('MEDIA_RECORDER_NOT_RECORDING', 'No pude iniciar la grabación del micrófono.');
+      }
+
+      interview.startedAt = Date.now();
+      interview.recordingState = 'recording';
+      novaTurnLog('recorder_started', { state: recorder.state, recordingId });
+      recordAnswerButton?.classList.add('recording');
+      recordAnswerButton?.setAttribute('aria-pressed', 'true');
+      recordAnswerButton?.setAttribute('aria-label', 'Detener respuesta manualmente');
+      if (recordAnswerButton) recordAnswerButton.disabled = false;
+      if (recordCaption) recordCaption.textContent = 'Escuchando…';
+      if (recordHelper) recordHelper.textContent = '';
+      setAgentState('listening');
+      setVoiceStatus('Escuchando…', 'processing');
+      console.log('[NOVA] recorder started', interview.mediaRecorder.mimeType);
+      novaTurnLog('recording_start', {
+        mimeType: interview.mediaRecorder.mimeType,
+        noiseFloor: interview.currentNoiseFloor,
+        threshold: interview.currentVadThreshold
+      });
 
       interview.durationTimer = setInterval(() => {
         if (!interview.speechDetected) return;
@@ -6505,6 +6655,9 @@ main{width:100%;height:100%}
       currentExample: interview.currentExample || '',
       durationMs,
       stopReason: interview.stopReason,
+      blobSize: blob.size,
+      noiseFloor: interview.currentNoiseFloor,
+      vadThreshold: interview.currentVadThreshold,
       blob,
       mimeType: blob.type,
       createdAt: Date.now(),
@@ -6552,6 +6705,10 @@ main{width:100%;height:100%}
       ) return;
 
       acceptedTranscript = String(transcriptionResult?.transcript || '').trim();
+      queueItem.transcriptionQuality = String(transcriptionResult?.transcription_quality || '');
+      queueItem.transcriptionModel = String(transcriptionResult?.timing?.transcription_model || '');
+      queueItem.transcriptionMs = Number(transcriptionResult?.timing?.transcription_ms || 0);
+      queueItem.transcriptionFallbackUsed = Boolean(transcriptionResult?.timing?.transcription_fallback_used);
       interview.pendingTranscript = acceptedTranscript;
       interview.pendingAnalysisItem = queueItem;
       novaTurnLog('transcript_received', {
@@ -6900,13 +7057,18 @@ main{width:100%;height:100%}
       const currentDimension = NOVA_DIMENSION_SET.has(interview.questionId)
         ? interview.questionId
         : getNextPendingDimension();
-      const alreadyAsked = Number(interview.askedCount?.[currentDimension] || 0);
+      const currentAttempt = interview.dimensionAttempts?.[currentDimension] || {
+        mainAsked: 1,
+        clarificationAsked: 0,
+        exhausted: false
+      };
 
-      if (alreadyAsked >= 2) {
-        nextDimension = NOVA_CORE_DIMENSIONS.find((dimension) =>
-          dimension !== currentDimension &&
-          interview.dimensionStatus?.[dimension] === 'pending'
-        ) || '';
+      if (currentAttempt.clarificationAsked >= 1) {
+        currentAttempt.exhausted = true;
+        interview.dimensionAttempts[currentDimension] = currentAttempt;
+        persistDimensionAttempts();
+        syncLegacyAskedCount(currentDimension);
+        nextDimension = getNextPendingDimension('');
       } else {
         nextDimension = currentDimension;
       }
@@ -6929,6 +7091,15 @@ main{width:100%;height:100%}
       setAgentEmotion(sameDimension ? 'curious' : normalizeNovaEmotion(result));
     } else {
       nextDimension = getNextPendingDimension(result?.next_dimension);
+      if (nextDimension === interview.questionId) {
+        const currentAttempt = interview.dimensionAttempts?.[interview.questionId];
+        if (currentAttempt) {
+          currentAttempt.exhausted = true;
+          persistDimensionAttempts();
+          syncLegacyAskedCount(interview.questionId);
+        }
+        nextDimension = getNextPendingDimension('');
+      }
       if (!nextDimension) {
         interview.pendingResult = { ...result, interview_complete: true, should_finish: true };
         interview.autoListenEnabled = false;
@@ -6949,22 +7120,14 @@ main{width:100%;height:100%}
     interview.listenRecoveryAttempts = 0;
 
     const previousDimension = interview.questionId;
-    const isClarificationTurn = nextDimension === previousDimension;
+    const isClarificationTurn = needsClarification && nextDimension === previousDimension;
 
-    if (isClarificationTurn) {
-      interview.clarificationsAsked += 1;
-      localStorage.setItem('despegaInterviewClarifications', String(interview.clarificationsAsked));
-    } else {
-      interview.mainQuestionsAsked = Math.min(
-        DESPEGA_AI.maxInterviewQuestions,
-        interview.mainQuestionsAsked + 1
-      );
-      localStorage.setItem('despegaInterviewMainQuestions', String(interview.mainQuestionsAsked));
-    }
+    registerPresentedQuestion(
+      nextDimension,
+      isClarificationTurn ? 'clarification' : 'main'
+    );
 
     interview.questionId = nextDimension;
-    interview.askedCount[nextDimension] = Number(interview.askedCount[nextDimension] || 0) + 1;
-    persistAskedCount();
     interview.currentQuestion = nextQuestion;
     interview.currentExample = nextExample;
     localStorage.setItem('despegaCurrentQuestionId', interview.questionId);
@@ -7195,11 +7358,18 @@ main{width:100%;height:100%}
         });
         const queuedTranscript = String(transcriptionResult?.transcript || '').trim();
         if (!queuedTranscript) throw new Error('EMPTY_QUEUED_TRANSCRIPT');
+        const queuedAnalysisMeta = {
+          ...row,
+          transcriptionQuality: String(transcriptionResult?.transcription_quality || ''),
+          transcriptionModel: String(transcriptionResult?.timing?.transcription_model || ''),
+          transcriptionMs: Number(transcriptionResult?.timing?.transcription_ms || 0),
+          transcriptionFallbackUsed: Boolean(transcriptionResult?.timing?.transcription_fallback_used)
+        };
 
         setInterviewBusy(true, 'analysis');
         setVoiceStatus('Entendiendo tu respuesta guardada…', 'processing');
         const result = await callDespegaAI(null, {
-          ...row,
+          ...queuedAnalysisMeta,
           mode: 'analyze',
           transcriptOverride: queuedTranscript
         });

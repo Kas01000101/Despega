@@ -157,3 +157,55 @@ Do not merge to `main` until all 15 cases pass on the Vercel Preview connected t
 - processedRecordingIds is written only after receiveAIResult accepts the turn.
 - After a terminal retryable processing failure, Nova speaks a short recovery message and resumes listening automatically; if listening cannot resume, the existing paused/manual fallback remains available.
 - The current question/dimension must not advance before a validated result is accepted.
+
+
+## Plan 6 — state machine, diagnostics and STT confidence
+
+### 16. Exhausted skill dimension
+Give an insufficient answer to `skills`, then an insufficient answer to its single clarification.
+
+Expected:
+- `skills.clarificationAsked = 1`;
+- `skills.exhausted = true`;
+- Nova advances to another available dimension;
+- `skills` does not reappear later in the same session.
+
+### 17. Skip progression
+Skip `interests`.
+
+Expected:
+- `interests = skipped`;
+- the next dimension registers exactly one main question;
+- its clarification allowance remains exactly one.
+
+### 18. State schema migration
+Load Step 3 with a missing/old `despegaNovaStateVersion`.
+
+Expected:
+- incompatible Nova Step 3 keys are reset;
+- Step 1 and Step 2 remain intact;
+- the current version is stored as `3`.
+
+### 19. VAD calibration order
+Start an automatic turn.
+
+Expected:
+- getUserMedia and VAD calibration happen before MediaRecorder starts;
+- UI does not show `Escuchando` until calibration is ready and recorder is recording;
+- a 2 second pause does not stop the recording.
+
+### 20. Suspicious short transcription
+Use audio >= 3 seconds that produces <= 5 transcript characters on the first STT pass.
+
+Expected:
+- a second independent STT pass runs;
+- semantic analysis runs only if the retry is good and compatible, or the short primary is replaced by a good retry;
+- otherwise Nova asks for a rerecord and profile state is unchanged.
+
+### 21. Persistent diagnostics
+Complete one spoken turn.
+
+Expected:
+- one `nova_voice_diagnostics` row exists for `(session_id, recording_id)`;
+- it includes stop reason, blob size, MIME, VAD metadata, STT quality/model/timing, and analysis timing;
+- no raw audio is persisted by default.

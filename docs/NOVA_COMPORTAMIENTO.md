@@ -19,7 +19,7 @@
 2. Cuando el TTS termina correctamente, el micrófono se prepara automáticamente.
 3. El VAD detecta cuándo el usuario empieza a hablar.
 4. El usuario puede hacer pausas naturales; Nova no debe cortar una pausa breve.
-5. Tras aproximadamente 1.5 s de silencio después de haber detectado voz, la grabación finaliza automáticamente.
+5. Tras aproximadamente 2.8 s de silencio continuo después de haber detectado voz, la grabación finaliza automáticamente.
 6. Gemini transcribe, extrae evidencia y evalúa suficiencia.
 7. Nova reacciona de forma contextual y formula la siguiente pregunta en un solo turno hablado cuando sea posible.
 8. El micrófono vuelve a activarse automáticamente después de que Nova termina de hablar.
@@ -48,10 +48,11 @@ Estrategias válidas:
 - `insufficient`: demasiado vaga, irrelevante o inaudible.
 
 ## Duración
-- Objetivo interno: ~4 intervenciones útiles.
+- Objetivo interno: hasta 5 preguntas principales.
 - Mínimo: 3 respuestas útiles.
 - No se muestra contador al usuario.
-- Límite técnico: 7 turnos antes del cierre forzado.
+- Cada dimensión admite como máximo 1 pregunta principal y 1 aclaración.
+- Si una dimensión sigue insuficiente después de la aclaración, queda `exhausted` y no vuelve a preguntarse en esa sesión.
 
 ## Dimensiones mínimas
 - objetivo

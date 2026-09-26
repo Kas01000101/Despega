@@ -426,6 +426,19 @@ async function persistTurn(args: {
   turnsCount: number;
   durationMs: number | null;
   recordingId: string;
+  questionId: string;
+  stopReason: string;
+  blobSize: number;
+  mimeType: string;
+  noiseFloor: number | null;
+  vadThreshold: number | null;
+  transcriptionQuality: string;
+  transcriptionModel: string;
+  transcriptionMs: number;
+  transcriptionFallbackUsed: boolean;
+  analysisModel: string;
+  analysisMs: number;
+  analysisFallbackUsed: boolean;
 }) {
   if (!supabaseAdmin || !args.sessionId) return false;
 
@@ -483,7 +496,7 @@ async function persistTurn(args: {
   };
   if (args.onboardingData) profilePayload.onboarding_data = args.onboardingData;
 
-  const [profileWrite, turnWrite] = await Promise.all([
+  const [profileWrite, turnWrite, diagnosticWrite] = await Promise.all([
     supabaseAdmin
       .from("profiles")
       .upsert(profilePayload, { onConflict: "session_id" }),
@@ -492,6 +505,7 @@ async function persistTurn(args: {
       .insert({
         session_id: args.sessionId,
         question: args.question,
+        question_id: args.questionId,
         transcript: text(args.result.transcript, 3000),
         summary: text(args.result.summary, 1500),
         turn_intent: text(args.result.turn_intent, 100),
@@ -500,11 +514,39 @@ async function persistTurn(args: {
         answer_sufficiency: text(args.result.answer_sufficiency, 100),
         duration_ms: args.durationMs,
         recording_id: args.recordingId || null,
+        transcription_quality: args.transcriptionQuality,
+        stop_reason: args.stopReason,
       }),
+    supabaseAdmin
+      .from("nova_voice_diagnostics")
+      .upsert({
+        session_id: args.sessionId,
+        recording_id: args.recordingId,
+        question_id: args.questionId,
+        question: args.question,
+        duration_ms: args.durationMs,
+        stop_reason: args.stopReason,
+        blob_size: args.blobSize,
+        mime_type: args.mimeType,
+        noise_floor: args.noiseFloor,
+        vad_threshold: args.vadThreshold,
+        transcript_length: text(args.result.transcript, 3000).length,
+        transcription_quality: args.transcriptionQuality,
+        transcription_model: args.transcriptionModel,
+        transcription_ms: args.transcriptionMs,
+        transcription_fallback_used: args.transcriptionFallbackUsed,
+        analysis_model: args.analysisModel,
+        analysis_ms: args.analysisMs,
+        analysis_fallback_used: args.analysisFallbackUsed,
+        http_status: 200,
+        error_code: "",
+        updated_at: now,
+      }, { onConflict: "session_id,recording_id" }),
   ]);
 
   if (profileWrite.error) throw profileWrite.error;
   if (turnWrite.error) throw turnWrite.error;
+  if (diagnosticWrite.error) throw diagnosticWrite.error;
   return true;
 }
 
@@ -539,6 +581,43 @@ function geminiRequestBody(
   };
 }
 
+function parseTranscriptionCandidate(payload: any) {
+  const output =
+    payload?.candidates?.[0]?.content?.parts
+      ?.map((part: any) => part?.text || "")
+      .join("")
+      .trim() || "";
+
+  if (!output) return null;
+  try {
+    const parsed = JSON.parse(output);
+    return {
+      transcript: text(parsed.transcript, 3000),
+      speechDetected: Boolean(parsed.speech_detected),
+      quality: ["good", "uncertain", "inaudible"].includes(String(parsed.quality))
+        ? String(parsed.quality)
+        : "uncertain",
+    };
+  } catch {
+    return null;
+  }
+}
+
+function transcriptsCompatible(first: string, second: string) {
+  const a = normalizeForEvidence(first);
+  const b = normalizeForEvidence(second);
+  if (!a || !b) return false;
+  if (a.includes(b) || b.includes(a)) return true;
+
+  const aTokens = new Set(a.split(" ").filter((token) => token.length >= 3));
+  const bTokens = new Set(b.split(" ").filter((token) => token.length >= 3));
+  if (!aTokens.size || !bTokens.size) return false;
+
+  let overlap = 0;
+  for (const token of aTokens) if (bTokens.has(token)) overlap += 1;
+  return overlap / Math.min(aTokens.size, bTokens.size) >= 0.5;
+}
+
 async function callGeminiResilient(args: {
   apiKey: string;
   prompt: string;
@@ -547,13 +626,18 @@ async function callGeminiResilient(args: {
   audioBase64?: string;
   temperature?: number;
   phase?: "transcription" | "analysis";
+  preferFallback?: boolean;
 }) {
   const phase = args.phase || "analysis";
   const attempts = phase === "transcription"
-    ? [
-        { model: MODEL, timeoutMs: GEMINI_TIMEOUTS.transcriptionFallback, label: "primary_quality" },
-        { model: FALLBACK_MODEL, timeoutMs: GEMINI_TIMEOUTS.transcriptionFast, label: "fallback_fast" },
-      ]
+    ? (args.preferFallback
+      ? [
+          { model: FALLBACK_MODEL, timeoutMs: GEMINI_TIMEOUTS.transcriptionFast, label: "quality_retry_independent" },
+        ]
+      : [
+          { model: MODEL, timeoutMs: GEMINI_TIMEOUTS.transcriptionFallback, label: "primary_quality" },
+          { model: FALLBACK_MODEL, timeoutMs: GEMINI_TIMEOUTS.transcriptionFast, label: "fallback_fast" },
+        ])
     : [
         { model: FALLBACK_MODEL, timeoutMs: GEMINI_TIMEOUTS.analysisFast, label: "primary_fast" },
         { model: MODEL, timeoutMs: GEMINI_TIMEOUTS.analysisFallback, label: "fallback_quality" },
@@ -774,6 +858,17 @@ Deno.serve(async (req: Request) => {
     const durationMs = Number.isFinite(durationMsRaw) && durationMsRaw > 0
       ? Math.min(durationMsRaw, 10 * 60_000)
       : null;
+    const stopReason = text(form.get("stop_reason"), 80);
+    const blobSize = Math.max(0, Math.min(MAX_AUDIO_BYTES, Number(form.get("blob_size") || audio?.size || 0) || 0));
+    const mimeType = text(form.get("mime_type"), 160) || audio?.type || "";
+    const noiseFloorRaw = Number(form.get("noise_floor") || 0);
+    const vadThresholdRaw = Number(form.get("vad_threshold") || 0);
+    const noiseFloor = Number.isFinite(noiseFloorRaw) && noiseFloorRaw > 0 ? noiseFloorRaw : null;
+    const vadThreshold = Number.isFinite(vadThresholdRaw) && vadThresholdRaw > 0 ? vadThresholdRaw : null;
+    const transcriptionQualityHint = text(form.get("transcription_quality"), 32);
+    const transcriptionModelHint = text(form.get("transcription_model"), 120);
+    const transcriptionMsHint = Math.max(0, Number(form.get("transcription_ms") || 0) || 0);
+    const transcriptionFallbackHint = String(form.get("transcription_fallback_used") || "") === "true";
 
     let profile: Record<string, string[]> = sanitizeProfile({});
     let history: unknown[] = [];
@@ -802,7 +897,15 @@ Deno.serve(async (req: Request) => {
     }
     let transcript = mode === "analyze" ? transcriptOverride : "";
     let speechDetected = mode === "analyze" ? Boolean(transcriptOverride) : false;
-    let transcriptionQuality = mode === "analyze" ? "good" : "uncertain";
+    let transcriptionQuality = mode === "analyze"
+      ? (["good", "uncertain", "inaudible"].includes(transcriptionQualityHint) ? transcriptionQualityHint : "good")
+      : "uncertain";
+
+    if (mode === "analyze") {
+      timing.transcription_ms = transcriptionMsHint;
+      timing.transcription_model = transcriptionModelHint;
+      timing.transcription_fallback_used = transcriptionFallbackHint;
+    }
 
     if (mode !== "analyze") {
         const bytes = new Uint8Array(await audio!.arrayBuffer());
@@ -863,25 +966,75 @@ Devuelve únicamente el JSON solicitado por el schema.
         }, 503, origin);
       }
 
-      const transcriptionOutput =
-        transcriptionGemini.payload?.candidates?.[0]?.content?.parts
-          ?.map((part: any) => part?.text || "")
-          .join("")
-          .trim() || "";
-
-      let transcription: Record<string, any>;
-      try {
-        transcription = JSON.parse(transcriptionOutput);
-      } catch {
-        console.error("Invalid transcription JSON", transcriptionOutput.slice(0, 500));
+      const primaryCandidate = parseTranscriptionCandidate(transcriptionGemini.payload);
+      if (!primaryCandidate) {
+        const rawOutput =
+          transcriptionGemini.payload?.candidates?.[0]?.content?.parts
+            ?.map((part: any) => part?.text || "")
+            .join("")
+            .trim() || "";
+        console.error("Invalid transcription JSON", rawOutput.slice(0, 500));
         return json({ error: "INVALID_TRANSCRIPTION_JSON", retryable: true }, 502, origin);
       }
 
-        transcript = text(transcription.transcript, 3000);
-        speechDetected = Boolean(transcription.speech_detected);
-        transcriptionQuality = ["good", "uncertain", "inaudible"].includes(String(transcription.quality))
-        ? String(transcription.quality)
-        : "uncertain";
+      transcript = primaryCandidate.transcript;
+      speechDetected = primaryCandidate.speechDetected;
+      transcriptionQuality = primaryCandidate.quality;
+
+      const suspiciousShort =
+        speechDetected &&
+        (durationMs || 0) >= 3000 &&
+        audio!.size >= 12000 &&
+        transcript.length <= 5;
+
+      if (speechDetected && (transcriptionQuality !== "good" || suspiciousShort)) {
+        console.log("[NOVA STT] independent_quality_retry", JSON.stringify({
+          sessionId,
+          recordingId,
+          primaryQuality: transcriptionQuality,
+          primaryLength: transcript.length,
+          suspiciousShort,
+        }));
+
+        const retryStartedAt = performance.now();
+        const secondPass = await callGeminiResilient({
+          apiKey: geminiKey,
+          prompt: transcriptionPrompt,
+          responseSchema: transcriptionSchema,
+          audioType: audio!.type || "audio/webm",
+          audioBase64,
+          temperature: 0,
+          phase: "transcription",
+          preferFallback: true,
+        });
+        timing.transcription_attempt_2_ms = Math.round(performance.now() - retryStartedAt);
+
+        if (secondPass.response?.ok) {
+          const secondCandidate = parseTranscriptionCandidate(secondPass.payload);
+          const compatible = secondCandidate
+            ? transcriptsCompatible(transcript, secondCandidate.transcript)
+            : false;
+          const primaryTooShortToTrust = transcript.length <= 5;
+
+          if (
+            secondCandidate?.speechDetected &&
+            secondCandidate.quality === "good" &&
+            (compatible || primaryTooShortToTrust)
+          ) {
+            transcript = secondCandidate.transcript;
+            speechDetected = true;
+            transcriptionQuality = "good";
+            timing.transcription_model = String(secondPass.model || timing.transcription_model || "");
+            timing.transcription_fallback_used = true;
+          } else if (suspiciousShort) {
+            transcriptionQuality = "uncertain";
+          }
+        } else if (suspiciousShort) {
+          transcriptionQuality = "uncertain";
+        }
+      }
+
+      timing.transcription_ms = Math.round(performance.now() - transcriptionStartedAt);
 
       console.log("Nova transcription result", JSON.stringify({
         sessionId,
@@ -1299,6 +1452,19 @@ Devuelve solo el JSON solicitado por el schema.
         turnsCount,
         durationMs,
         recordingId,
+        questionId,
+        stopReason,
+        blobSize,
+        mimeType,
+        noiseFloor,
+        vadThreshold,
+        transcriptionQuality,
+        transcriptionModel: String(timing.transcription_model || transcriptionModelHint || ""),
+        transcriptionMs: Number(timing.transcription_ms || transcriptionMsHint || 0),
+        transcriptionFallbackUsed: Boolean(timing.transcription_fallback_used || transcriptionFallbackHint),
+        analysisModel: String(timing.analysis_model || ""),
+        analysisMs: Number(timing.analysis_ms || 0),
+        analysisFallbackUsed: Boolean(timing.analysis_fallback_used),
       });
     } catch (error) {
       console.error("Persistence error", error);

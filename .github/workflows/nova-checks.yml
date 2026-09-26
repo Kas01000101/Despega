@@ -1,0 +1,24 @@
+name: Nova checks
+
+on:
+  push:
+    branches:
+      - "feat/main-consolidation-nova"
+  pull_request:
+    paths:
+      - "index.html"
+      - "supabase/functions/despega-ai/index.ts"
+      - "scripts/nova-*.mjs"
+      - "docs/NOVA_*.md"
+      - "supabase/migrations/**"
+
+jobs:
+  nova:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: node scripts/nova-static-check.mjs
+      - run: node scripts/nova-regression-check.mjs

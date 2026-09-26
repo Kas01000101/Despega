@@ -29,6 +29,14 @@ const checks = [
   ['backend strict interests coverage', edge.includes('if (!nonAnswer && result.interests.length > 0)')],
   ['backend skill-vs-experience contract', edge.includes('DISTINCIÓN OBLIGATORIA ENTRE HABILIDAD Y EXPERIENCIA')],
   ['analysis errors preserve transcript', edge.includes('transcription_quality: transcriptionQuality')],
+  ['state version gate exists', html.includes('NOVA_STATE_VERSION = 3') && html.includes('ensureNovaStateVersion()')],
+  ['dimension attempts exist', html.includes('despegaDimensionAttempts') && html.includes('clarificationAsked')],
+  ['exhausted dimensions are excluded', html.includes("!interview.dimensionAttempts?.[dimension]?.exhausted")],
+  ['VAD calibrates before recorder starts', html.indexOf('const vadReady = await waitForVadReady') < html.indexOf('recorder.start();', html.indexOf('async function startRealRecording'))],
+  ['voice diagnostic metadata sent', html.includes("form.append('stop_reason'") && html.includes("form.append('noise_floor'")],
+  ['backend independent uncertain STT retry', edge.includes('independent_quality_retry') && edge.includes('preferFallback: true')],
+  ['backend persistent voice diagnostics', edge.includes('.from("nova_voice_diagnostics")')],
+  ['turn persistence includes question id', edge.includes('question_id: args.questionId')],
 ];
 
 let failed = 0;
