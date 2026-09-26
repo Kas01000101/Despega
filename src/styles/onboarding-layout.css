@@ -122,91 +122,51 @@
     isolation: isolate;
   }
 
+  /* El copy de Pasos 2 y 3 es HTML real: permite énfasis rosado
+     y mantiene el bloque justo por encima de las cabezas de los personajes. */
   #step2View .onboarding-art-panel::before,
-  #step3View .onboarding-art-panel::before {
-    position: absolute;
-    z-index: 4;
-    top: clamp(76px, 9.2dvh, 104px);
-    left: 50%;
-    width: min(86%, 720px);
-    transform: translateX(-50%);
-    color: var(--navy-900, #0f2b68);
-    font-family: Poppins, system-ui, sans-serif;
-    font-size: clamp(38px, 3.25vw, 58px);
-    font-weight: 800;
-    line-height: 1.01;
-    letter-spacing: -0.035em;
-    text-align: center;
-    white-space: pre-line;
-    pointer-events: none;
-  }
-
-  #step2View .onboarding-art-panel::before {
-    content: "Cada respuesta\A nos acerca a tu ruta";
-  }
-
-  #step3View .onboarding-art-panel::before {
-    content: none;
-    display: none;
-  }
-
   #step2View .onboarding-art-panel::after,
+  #step3View .onboarding-art-panel::before,
   #step3View .onboarding-art-panel::after {
+    content: none !important;
+    display: none !important;
+  }
+
+  #step2View .onboarding-copy,
+  #step3View .onboarding-copy {
     position: absolute;
     z-index: 4;
-    top: clamp(185px, 21.5dvh, 220px);
+    top: clamp(108px, 14.5dvh, 146px);
     left: 50%;
-    width: min(76%, 610px);
-    transform: translateX(-50%);
-    color: #7184a8;
-    font-family: Poppins, system-ui, sans-serif;
-    font-size: clamp(13px, 1.08vw, 17px);
-    font-weight: 400;
-    line-height: 1.35;
-    text-align: center;
-    pointer-events: none;
-  }
-
-  #step2View .onboarding-art-panel::after {
-    content: "Tus respuestas nos ayudan a crear una ruta más personalizada para ti.";
-  }
-
-  #step3View .onboarding-art-panel::after {
-    content: none;
-    display: none;
-  }
-
-  #step3View .step3-visual-copy {
-    position: absolute;
-    z-index: 4;
-    top: clamp(76px, 9.2dvh, 104px);
-    left: 50%;
-    width: min(86%, 720px);
+    width: min(88%, 720px);
     transform: translateX(-50%);
     text-align: center;
     pointer-events: none;
   }
 
-  #step3View .step3-visual-copy h1 {
+  #step2View .onboarding-copy h1,
+  #step3View .onboarding-copy h1 {
     margin: 0;
     color: var(--navy-900, #0f2b68);
     font-family: Poppins, system-ui, sans-serif;
-    font-size: clamp(38px, 3.25vw, 58px);
+    font-size: clamp(36px, 3.05vw, 54px);
     font-weight: 800;
-    line-height: 1.01;
+    line-height: 1.03;
     letter-spacing: -0.035em;
   }
 
-  #step3View .step3-visual-copy .accent-pink {
+  #step2View .onboarding-copy .accent-pink,
+  #step3View .onboarding-copy .accent-pink {
     color: var(--pink-500, #f1268d);
   }
 
-  #step3View .step3-visual-copy p {
+  #step2View .onboarding-copy p,
+  #step3View .onboarding-copy p {
     width: min(100%, 610px);
     margin: 10px auto 0;
     color: #7184a8;
     font-family: Poppins, system-ui, sans-serif;
-    font-size: clamp(13px, 1.08vw, 17px);
+    font-size: clamp(13px, 1.05vw, 16px);
     font-weight: 400;
     line-height: 1.35;
   }
