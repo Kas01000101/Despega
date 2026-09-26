@@ -199,3 +199,21 @@ body.dashboard-mode>.language-wrap{display:none!important}
 .nova-chat-error{padding:9px 12px;background:#fff0f1;color:#a12e3a;font-size:9.5px;border-top:1px solid #f4d5d9}.nova-chat-error button{margin-left:8px;border:0;background:#fff;color:#a12e3a;border-radius:8px;padding:5px 7px;font:inherit;font-weight:700;cursor:pointer}
 .sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
 @media(max-width:680px){.dd-nova-panel{left:10px;right:10px;bottom:150px;width:auto;height:calc(100dvh - 170px);max-height:none}}
+
+
+/* Nova Chat v2 rich content */
+.nova-rich-card{margin:10px 0 0;padding:12px;border:1px solid rgba(78,68,155,.14);border-radius:14px;background:#fff;display:grid;gap:6px}
+.nova-rich-card strong{font-size:13px;color:#25204d}
+.nova-rich-card>span{font-size:11px;color:#6d6788}
+.nova-rich-kicker{font-size:10px!important;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#7657d7!important}
+.nova-rich-meta{display:flex;gap:6px;flex-wrap:wrap}
+.nova-rich-meta span{font-size:10px;background:#f4f1ff;color:#5e4ab4;padding:4px 7px;border-radius:999px}
+.nova-rich-actions,.dd-modal-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:3px}
+.nova-rich-actions button,.nova-route-card button,.nova-resource-card button{border:0;border-radius:9px;padding:7px 9px;font:inherit;font-size:10px;font-weight:700;cursor:pointer;background:#f2efff;color:#5e4ab4}
+.nova-rich-actions button:last-child,.nova-resource-card button{background:#6650c8;color:#fff}
+.nova-msg-motivation{margin-top:6px;padding:8px 10px;border-radius:10px;background:#fff8df;color:#68551a;font-size:11px;line-height:1.45}
+.dd-verified-source{display:inline-block;margin:2px 0 8px;padding:5px 8px;border-radius:999px;background:#eefbf4;color:#26754b;font-size:11px;font-weight:700}
+.dd-modal-requirements{margin:12px 0;padding:10px 12px;border-radius:12px;background:#f8f7fc}
+.dd-modal-requirements strong{display:block;margin-bottom:6px}
+.dd-modal-requirements ul{margin:0;padding-left:18px}
+.dd-modal-requirements li{margin:3px 0}
