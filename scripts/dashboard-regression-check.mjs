@@ -9,7 +9,7 @@ const assertions=[
   ['search exists',js.includes('id="ddSearch"')&&js.includes('filteredCatalog')],
   ['save exists',js.includes('toggleSaved')&&js.includes('data-dd-save')],
   ['details exist',js.includes('openDetails')&&js.includes('despegaViewedOpportunities')],
-  ['four route stages',['Conoce tu punto de partida','Fortalece habilidades','Explora oportunidades','Postula y avanza'].every(x=>js.includes(x))],
+  ['four route stages',['Conoce tu punto de partida','Fortalece habilidades','Explora oportunidades','Da tu siguiente paso'].every(x=>js.includes(x))],
   ['progress data driven',js.includes('m.routeProgress')&&js.includes('m.viewedCount')&&js.includes('m.savedCount')],
   ['Nova contextual nav',js.includes('data-dd-nova-go="profile"')&&js.includes('data-dd-nova-go="opportunities"')],
   ['no decision wording',!js.includes('Nova te recomienda')]
