@@ -1,6 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2.95.0";
 
-// DESPEGA+ — Supabase Edge Function for Nova
+// DESPEGA — Supabase Edge Function for Nova
 // Required secret: GEMINI_API_KEY
 // Optional: GEMINI_MODEL, GEMINI_FALLBACK_MODEL, ALLOWED_ORIGINS (comma-separated exact origins)
 
@@ -8,7 +8,7 @@ const MAX_AUDIO_BYTES = 8 * 1024 * 1024;
 const MAX_QUESTION_CHARS = 1000;
 const MAX_QUESTION_ID_CHARS = 100;
 const MAX_EXAMPLE_CHARS = 1500;
-const MAX_HISTORY_TURNS = 3;
+const MAX_HISTORY_TURNS = 2;
 const MAX_PROFILE_ITEMS = 30;
 const MAX_BARRIER_DETAILS = 12;
 const RATE_LIMIT_PER_MINUTE = 20;
@@ -454,28 +454,28 @@ async function persistTurn(args: {
   };
   if (args.onboardingData) profilePayload.onboarding_data = args.onboardingData;
 
-  const { error: profileError } = await supabaseAdmin
-    .from("profiles")
-    .upsert(profilePayload, { onConflict: "session_id" });
+  const [profileWrite, turnWrite] = await Promise.all([
+    supabaseAdmin
+      .from("profiles")
+      .upsert(profilePayload, { onConflict: "session_id" }),
+    supabaseAdmin
+      .from("nova_turns")
+      .insert({
+        session_id: args.sessionId,
+        question: args.question,
+        transcript: text(args.result.transcript, 3000),
+        summary: text(args.result.summary, 1500),
+        turn_intent: text(args.result.turn_intent, 100),
+        nova_reaction: text(args.result.nova_reaction, 1000),
+        follow_up_strategy: text(args.result.follow_up_strategy, 100),
+        answer_sufficiency: text(args.result.answer_sufficiency, 100),
+        duration_ms: args.durationMs,
+        recording_id: args.recordingId || null,
+      }),
+  ]);
 
-  if (profileError) throw profileError;
-
-  const { error: turnError } = await supabaseAdmin
-    .from("nova_turns")
-    .insert({
-      session_id: args.sessionId,
-      question: args.question,
-      transcript: text(args.result.transcript, 3000),
-      summary: text(args.result.summary, 1500),
-      turn_intent: text(args.result.turn_intent, 100),
-      nova_reaction: text(args.result.nova_reaction, 1000),
-      follow_up_strategy: text(args.result.follow_up_strategy, 100),
-      answer_sufficiency: text(args.result.answer_sufficiency, 100),
-      duration_ms: args.durationMs,
-      recording_id: args.recordingId || null,
-    });
-
-  if (turnError) throw turnError;
+  if (profileWrite.error) throw profileWrite.error;
+  if (turnWrite.error) throw turnWrite.error;
   return true;
 }
 
@@ -519,8 +519,8 @@ async function callGeminiResilient(args: {
   temperature?: number;
 }) {
   const attempts = [
-    { model: FALLBACK_MODEL, timeoutMs: 4500, label: "primary_fast" },
-    { model: MODEL, timeoutMs: 4000, label: "fallback_quality" },
+    { model: FALLBACK_MODEL, timeoutMs: 3500, label: "primary_fast" },
+    { model: MODEL, timeoutMs: 3200, label: "fallback_quality" },
   ];
 
   let lastResponse: Response | null = null;
@@ -627,6 +627,14 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
+    const requestStartedAt = performance.now();
+    const timing = {
+      transcription_ms: 0,
+      analysis_ms: 0,
+      persistence_ms: 0,
+      total_ms: 0,
+    };
+
     const form = await req.formData();
     const audio = form.get("audio");
 
@@ -674,6 +682,13 @@ Deno.serve(async (req: Request) => {
     } catch {}
 
     const onboardingData = parseJsonObject(form.get("onboarding_data"));
+    const analysisProfile = Object.fromEntries(
+      PROFILE_FIELDS.map((field) => [
+        field,
+        Array.isArray(profile[field]) ? profile[field].slice(-8) : [],
+      ]),
+    );
+    const analysisHistory = history.slice(-2);
     const rawDimensionStatus = parseJsonObject(form.get("dimension_status")) || {};
     const dimensionStatus: Record<string, string> = {};
     for (const dimension of CORE_DIMENSIONS) {
@@ -708,6 +723,7 @@ REGLAS OBLIGATORIAS:
 Devuelve únicamente el JSON solicitado por el schema.
 `;
 
+    const transcriptionStartedAt = performance.now();
     const transcriptionGemini = await callGeminiResilient({
       apiKey: geminiKey,
       prompt: transcriptionPrompt,
@@ -716,6 +732,8 @@ Devuelve únicamente el JSON solicitado por el schema.
       audioBase64,
       temperature: 0,
     });
+
+    timing.transcription_ms = Math.round(performance.now() - transcriptionStartedAt);
 
     if (!transcriptionGemini.response?.ok) {
       return json({
@@ -804,7 +822,7 @@ REGLA DE EVIDENCIA:
 - El contexto histórico sirve para continuidad conversacional, nunca para crear evidencia del turno actual.
 
 
-Eres NOVA, la guía conversacional de DESPEGA+, una plataforma de orientación educativa y laboral para jóvenes.
+Eres NOVA, la guía conversacional de DESPEGA, una plataforma de orientación educativa y laboral para jóvenes.
 
 IDENTIDAD Y TONO:
 - Cercana, juvenil, optimista, clara y respetuosa.
@@ -896,13 +914,14 @@ RESPUESTAS ÚTILES PREVIAS: ${usefulAnswersCount}
 TURNOS PREVIOS: ${turnsCount}
 EJEMPLO ACTUAL: ${currentExample}
 ESTADO DE DIMENSIONES: ${JSON.stringify(dimensionStatus)}
-PERFIL: ${JSON.stringify(profile)}
-HISTORIAL RECIENTE: ${JSON.stringify(history)}
+PERFIL: ${JSON.stringify(analysisProfile)}
+HISTORIAL RECIENTE: ${JSON.stringify(analysisHistory)}
 
 Devuelve solo el JSON solicitado por el schema.
 `
 
     console.log("Nova analysis start", JSON.stringify({ sessionId, recordingId }));
+    const analysisStartedAt = performance.now();
 
     const gemini = await callGeminiResilient({
       apiKey: geminiKey,
@@ -910,6 +929,7 @@ Devuelve solo el JSON solicitado por el schema.
       responseSchema: analysisSchema,
       temperature: 0.2,
     });
+    timing.analysis_ms = Math.round(performance.now() - analysisStartedAt);
     const geminiResponse = gemini.response;
     const payload = gemini.payload;
 
@@ -1107,6 +1127,7 @@ Devuelve solo el JSON solicitado por el schema.
     }
 
     let persistenceOk = false;
+    const persistenceStartedAt = performance.now();
     try {
       persistenceOk = await persistTurn({
         sessionId,
@@ -1122,6 +1143,9 @@ Devuelve solo el JSON solicitado por el schema.
     } catch (error) {
       console.error("Persistence error", error);
     }
+    timing.persistence_ms = Math.round(performance.now() - persistenceStartedAt);
+    timing.total_ms = Math.round(performance.now() - requestStartedAt);
+    console.log("Nova timing", JSON.stringify({ sessionId, recordingId, ...timing }));
 
     return json({
       ...result,
@@ -1130,6 +1154,7 @@ Devuelve solo el JSON solicitado por el schema.
       transcription_quality: transcriptionQuality,
       speech_detected: true,
       persistence_ok: persistenceOk,
+      timing,
     }, 200, origin);
   } catch (error) {
     console.error(error);

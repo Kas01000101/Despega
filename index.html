@@ -2462,105 +2462,7 @@ main{width:100%;height:100%}
 }
 
 
-/* ============================================================
-   PLAN 4 — NOVA + RESUMEN + DASHBOARD
-   ============================================================ */
-.nova-conversation-card{
-  min-height:min(690px,calc(100dvh - 82px));
-  max-height:calc(100dvh - 64px);
-  overflow:hidden;
-}
-.nova-conversation-stage{
-  flex:1 1 auto;
-  min-height:0;
-  display:grid;
-  grid-template-rows:auto minmax(230px,1fr) minmax(92px,auto);
-  align-items:stretch;
-}
-.nova-question-inline{align-self:start}
-.nova-orb-zone{
-  align-self:center;
-  justify-self:center;
-  min-height:230px;
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  justify-content:center;
-}
-.nova-context-panel{
-  min-height:92px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  position:relative;
-}
-.nova-context-panel > *{
-  width:min(520px,100%);
-  margin-inline:auto;
-}
-.nova-notice,
-.nova-mic-panel,
-.nova-confirmation{
-  position:relative;
-  inset:auto;
-}
-.nova-actions{
-  margin-top:auto;
-  display:flex;
-  justify-content:flex-end;
-  align-items:center;
-  min-height:52px;
-}
-.nova-finish-button{margin-left:auto}
-
-.analysis-view{
-  grid-template-columns:minmax(0,47%) minmax(0,53%);
-  overflow:hidden;
-}
-.analysis-hero-panel{
-  padding:52px 24px 18px;
-  min-width:0;
-  min-height:0;
-}
-.analysis-hero-copy{width:min(560px,90%)}
-.analysis-hero-copy h1{
-  font-size:clamp(38px,3.35vw,54px);
-  line-height:1.02;
-  letter-spacing:-1.7px;
-}
-.analysis-hero-copy p{
-  margin-top:12px;
-  max-width:500px;
-  font-size:15px;
-  line-height:1.42;
-}
-.analysis-characters{
-  width:min(560px,82%);
-  max-height:46%;
-  bottom:18px;
-  border-radius:0;
-  object-fit:contain;
-}
-.analysis-panel{
-  min-width:0;
-  padding:48px 30px 22px 16px;
-}
-.analysis-card{
-  width:min(650px,100%);
-  max-height:calc(100dvh - 72px);
-  padding:24px 28px 22px;
-  gap:13px;
-  overflow:hidden;
-}
-.analysis-heading h2{font-size:clamp(30px,2.55vw,40px)}
-.analysis-heading p{font-size:14px}
-.analysis-stage{min-height:60px}
-.analysis-stage-copy strong{font-size:14px}
-.analysis-stage-copy span{font-size:11.8px}
-.analysis-note{padding:12px 16px;grid-template-columns:52px minmax(0,1fr);gap:12px}
-.analysis-note-icon{width:46px;height:46px}
-.analysis-note-icon svg{width:38px;height:38px}
-
+/* PLAN 5: Step 3 layout source of truth moved to src/styles/onboarding-layout.css. */
 /* El resumen se adapta antes de permitir overflow horizontal. */
 @media (max-width:980px){
   .analysis-view{grid-template-columns:1fr;overflow:auto}
@@ -3379,11 +3281,14 @@ main{width:100%;height:100%}
     maxRecordingSeconds: 30,
     minRecordingMs: 800,
     minAudioBytes: 256,
-    vadCalibrationMs: 700,
+    vadCalibrationMs: 400,
     vadSpeechStartMs: 120,
     vadSilenceMs: 1500,
     vadNoSpeechMs: 8000,
-    vadPostTtsDelayMs: 600,
+    vadPostTtsDelayMs: 250,
+    vadReadyTimeoutMs: 1800,
+    autoListenAttempts: 2,
+    detectedHoldMs: 650,
     vadThresholdMin: 0.009,
     vadThresholdMax: 0.065,
     vadNoiseMultiplier: 1.8,
@@ -4092,7 +3997,11 @@ main{width:100%;height:100%}
     vadFrame: null,
     vadToken: 0,
     vadActive: false,
+    vadReady: false,
+    audioSource: null,
     speechDetected: false,
+    detectedTurn: null,
+    perfMarks: Object.create(null),
     autoListenEnabled: true,
     noSpeechReminderCount: 0,
     stopReason: 'manual',
@@ -4152,7 +4061,7 @@ main{width:100%;height:100%}
       helper: ''
     },
     arming: {
-      label: 'Escuchando…',
+      label: 'Preparando escucha…',
       caption: '',
       helper: ''
     },
@@ -4178,6 +4087,11 @@ main{width:100%;height:100%}
     },
     processing: {
       label: 'Analizando…',
+      caption: '',
+      helper: ''
+    },
+    confirming: {
+      label: '',
       caption: '',
       helper: ''
     },
@@ -4257,13 +4171,84 @@ main{width:100%;height:100%}
     return raw ? raw.split(/\s+/)[0] : '';
   }
 
-  function setAgentState(state = 'idle') {
+  function novaPerfMark(name, extra = {}) {
+    const now = performance.now();
+    interview.perfMarks[name] = now;
+    console.log('[NOVA PERF]', name, { at: Math.round(now), ...extra });
+    return now;
+  }
+
+  function novaPerfDuration(startName, endName, extra = {}) {
+    const start = interview.perfMarks[startName];
+    const end = interview.perfMarks[endName] ?? performance.now();
+    const ms = Number.isFinite(start) ? Math.max(0, Math.round(end - start)) : null;
+    console.log('[NOVA PERF]', startName + '→' + endName, { ms, ...extra });
+    return ms;
+  }
+
+  function clearDetectedTurn() {
+    if (interview.detectedTurn?.timer) clearTimeout(interview.detectedTurn.timer);
+    interview.detectedTurn = null;
+    if (aiConfirmation) aiConfirmation.hidden = true;
+    if (aiInsights) aiInsights.innerHTML = '';
+  }
+
+  function showDetectedTurn(result, recordingId = '') {
+    clearDetectedTurn();
+    const labels = renderInsights(result);
+    if (!labels.length || !aiConfirmation) return false;
+
+    interview.detectedTurn = {
+      recordingId: String(recordingId || result?.recording_id || ''),
+      questionId: String(interview.questionId || ''),
+      lifecycleId: interview.lifecycleId,
+      timer: null
+    };
+    if (confirmationTitle) confirmationTitle.textContent = 'Detectado';
+    aiConfirmation.hidden = false;
+    novaPerfMark('detect_render', {
+      recordingId: interview.detectedTurn.recordingId,
+      questionId: interview.detectedTurn.questionId
+    });
+    return true;
+  }
+
+  function holdDetectedTurn(ms = DESPEGA_AI.detectedHoldMs) {
+    const token = interview.detectedTurn
+      ? {
+          recordingId: interview.detectedTurn.recordingId,
+          questionId: interview.detectedTurn.questionId,
+          lifecycleId: interview.detectedTurn.lifecycleId
+        }
+      : null;
+    if (!token) return Promise.resolve(false);
+
+    return new Promise(resolve => {
+      const timer = setTimeout(() => {
+        const current = interview.detectedTurn;
+        const same = Boolean(
+          current &&
+          current.recordingId === token.recordingId &&
+          current.questionId === token.questionId &&
+          current.lifecycleId === token.lifecycleId
+        );
+        resolve(same);
+      }, Math.max(0, Number(ms) || 0));
+      if (interview.detectedTurn) interview.detectedTurn.timer = timer;
+    });
+  }
+
+  function setNovaTurnState(state = 'idle') {
     const ui = STATE_UI[state] || STATE_UI.idle;
     interview.agentState = state;
 
-    // Un solo estado visual puede estar activo. Al hablar, escuchar,
-    // analizar o terminar, cualquier aviso viejo deja de competir con Nova.
-    if (!NOVA_NOTICE_STATES.has(state)) clearNovaNotice();
+    const noticeState = NOVA_NOTICE_STATES.has(state);
+    const detectedState = state === 'confirming';
+    const listeningState = ['arming','waiting','listening','silence_grace'].includes(state);
+    const manualState = ['paused','no_speech_2','error'].includes(state);
+
+    if (!noticeState) clearNovaNotice();
+    if (!detectedState) clearDetectedTurn();
 
     if (agentOrb) {
       agentOrb.dataset.state = state;
@@ -4273,9 +4258,13 @@ main{width:100%;height:100%}
     if (agentStateLabel) agentStateLabel.textContent = ui.label || '';
     if (recordCaption) recordCaption.textContent = ui.caption || '';
     if (recordHelper) recordHelper.textContent = ui.helper || '';
-    if (micPanel) micPanel.dataset.state = state;
 
-    const micInteractive = ['idle','arming','waiting','listening','silence_grace','paused','no_speech_2','error'].includes(state);
+    if (micPanel) {
+      micPanel.dataset.state = state;
+      micPanel.hidden = !(listeningState || manualState);
+    }
+
+    const micInteractive = listeningState || manualState || state === 'idle';
     if (recordAnswerButton && !interview.isProcessing) {
       recordAnswerButton.disabled = !micInteractive;
     }
@@ -4285,6 +4274,11 @@ main{width:100%;height:100%}
       String(['waiting','listening','silence_grace'].includes(state))
     );
     updateFinishButton();
+  }
+
+  // Compatibility alias: all legacy callers now pass through the single state machine.
+  function setAgentState(state = 'idle') {
+    setNovaTurnState(state);
   }
 
   function persistDimensionStatus() {
@@ -4350,7 +4344,10 @@ main{width:100%;height:100%}
     return Boolean(
       interview.recordingState === 'recording' &&
       interview.mediaRecorder?.state === 'recording' &&
-      interview.vadActive === true
+      interview.vadActive === true &&
+      interview.vadReady === true &&
+      interview.audioContext?.state === 'running' &&
+      interview.activeRecordingId
     );
   }
 
@@ -4374,6 +4371,7 @@ main{width:100%;height:100%}
     interview.lastRecordingDurationMs = 0;
     interview.recordingState = 'idle';
     interview.vadActive = false;
+    interview.vadReady = false;
 
     clearTimeout(interview.maxTimer);
     clearInterval(interview.durationTimer);
@@ -4388,53 +4386,78 @@ main{width:100%;height:100%}
     if (currentStep !== 'step3' || !interview.autoListenEnabled || interview.isProcessing) return false;
 
     clearListeningWatchdog();
-    novaTurnLog('listen_requested', { source });
+    const lifecycle = interview.lifecycleId;
+    novaTurnLog('listen_requested', { source, lifecycle });
 
-    let started = false;
-    try {
-      started = await beginListeningTurn();
-    } catch (error) {
-      console.warn('[NOVA LISTEN] start_failed', error);
-    }
+    for (let attempt = 1; attempt <= DESPEGA_AI.autoListenAttempts; attempt += 1) {
+      if (
+        currentStep !== 'step3' ||
+        lifecycle !== interview.lifecycleId ||
+        !interview.autoListenEnabled ||
+        interview.isProcessing
+      ) return false;
 
-    if (started && isActuallyListening()) {
-      interview.listenRecoveryAttempts = 0;
-      return true;
-    }
-
-    if (currentStep !== 'step3' || !interview.autoListenEnabled) return false;
-
-    interview.listenWatchdog = setTimeout(async () => {
-      if (currentStep !== 'step3' || !interview.autoListenEnabled || interview.isProcessing) return;
-
-      if (isActuallyListening()) {
-        interview.listenRecoveryAttempts = 0;
-        return;
-      }
-
-      if (interview.listenRecoveryAttempts >= 1) {
+      if (attempt > 1) {
+        novaTurnLog('listen_recovery', { source, attempt });
         resetAudioTurnBeforeListening();
-        showNovaNotice('No pude activar la escucha automática', 'Toca el micrófono para continuar.', 'paused');
-        setAgentState('paused');
-        if (recordAnswerButton) recordAnswerButton.disabled = false;
-        novaTurnLog('listen_fallback_manual', { source });
-        return;
+        releaseMicrophone();
+        await new Promise(resolve => setTimeout(resolve, 160));
       }
 
-      interview.listenRecoveryAttempts += 1;
-      novaTurnLog('listen_recovery', { source, attempt: interview.listenRecoveryAttempts });
-      resetAudioTurnBeforeListening();
-
-      const recovered = await beginListeningTurn().catch((error) => {
-        console.warn('[NOVA WATCHDOG] recovery_failed', error);
+      const started = await beginListeningTurn().catch((error) => {
+        console.warn('[NOVA LISTEN] start_failed', { source, attempt, error });
         return false;
       });
 
-      if (recovered && isActuallyListening()) {
+      if (started && isActuallyListening()) {
         interview.listenRecoveryAttempts = 0;
-      }
-    }, 1800);
+        novaTurnLog('listen_confirmed', {
+          source,
+          attempt,
+          contextState: interview.audioContext?.state,
+          recordingId: interview.activeRecordingId
+        });
 
+        // Real-state watchdog: a false-positive listener cannot survive silently.
+        clearListeningWatchdog();
+        interview.listenWatchdog = setTimeout(async () => {
+          if (
+            currentStep !== 'step3' ||
+            lifecycle !== interview.lifecycleId ||
+            !interview.autoListenEnabled ||
+            interview.isProcessing
+          ) return;
+          if (isActuallyListening()) return;
+
+          novaTurnLog('listen_watchdog_failed', { source });
+          resetAudioTurnBeforeListening();
+          releaseMicrophone();
+          const recovered = await resumeListeningAfterSpeech(source + '_watchdog');
+          if (!recovered && currentStep === 'step3') {
+            setAgentState('paused');
+            showNovaNotice(
+              'No pude activar la escucha automática',
+              'Toca el micrófono una vez para continuar.',
+              'paused'
+            );
+          }
+        }, 1500);
+
+        return true;
+      }
+    }
+
+    resetAudioTurnBeforeListening();
+    releaseMicrophone();
+    interview.autoListenEnabled = false;
+    setAgentState('paused');
+    showNovaNotice(
+      'No pude activar la escucha automática',
+      'Toca el micrófono una vez para continuar.',
+      'paused'
+    );
+    if (recordAnswerButton) recordAnswerButton.disabled = false;
+    novaTurnLog('listen_fallback_manual', { source });
     return false;
   }
 
@@ -4447,7 +4470,7 @@ main{width:100%;height:100%}
 
     if (interview.welcomePlayed || interview.answersCount > 0) {
       if (interview.autoListenEnabled && interview.recordingState === 'idle') {
-        await beginListeningTurn();
+        await resumeListeningAfterSpeech('resume_step3');
       }
       return;
     }
@@ -4523,7 +4546,7 @@ main{width:100%;height:100%}
   }
 
   // -------- IndexedDB: cola offline de audios --------
-  const IDB_NAME = 'despega-plus';
+  const IDB_NAME = 'despega';
   const IDB_VERSION = 1;
   const IDB_QUEUE = 'voice_queue';
 
@@ -4693,7 +4716,7 @@ main{width:100%;height:100%}
   // -------- Memoria conversacional de Nova --------
   // Se conserva localmente para que Nova recuerde lo ya dicho incluso si se recarga la página.
   // Nunca guardamos el audio en el historial: solo pregunta, transcripción, resumen y reacción.
-  const NOVA_HISTORY_LIMIT = 3;
+  const NOVA_HISTORY_LIMIT = 2;
 
   function saveConversationHistory() {
     interview.conversationHistory = (Array.isArray(interview.conversationHistory) ? interview.conversationHistory : []).slice(-NOVA_HISTORY_LIMIT);
@@ -5045,6 +5068,7 @@ main{width:100%;height:100%}
     interview.chunks = [];
     stopVoiceActivityDetection();
     releaseMicrophone();
+    closeNovaAudioContext();
 
     interview.isProcessing = false;
     interview.pendingResult = null;
@@ -5187,6 +5211,7 @@ main{width:100%;height:100%}
     }
 
     setAgentState('speaking');
+    novaPerfMark('tts_start', { chars: message.length });
     if (markExample) exampleAudioCard?.classList.add('playing');
 
     let result = ttsResult(false, 'unavailable');
@@ -5218,6 +5243,11 @@ main{width:100%;height:100%}
         else if (interview.isProcessing) setAgentState('processing');
         else setAgentState('idle');
       }
+    }
+
+    if (currentStep === 'step3' && lifecycle === interview.lifecycleId) {
+      novaPerfMark('tts_end', { ok: Boolean(result.ok), provider: result.provider || '' });
+      novaPerfDuration('tts_start', 'tts_end', { phase: 'tts_ms' });
     }
 
     if (
@@ -5268,7 +5298,7 @@ main{width:100%;height:100%}
     form.append('target_questions', String(DESPEGA_AI.targetInterviewQuestions));
     form.append('hard_cap_questions', String(DESPEGA_AI.maxInterviewQuestions));
     form.append('profile', JSON.stringify(requestMeta.profile || { ...loadPriorProfile(), ...interview.profile }));
-    form.append('conversation_history', JSON.stringify((requestMeta.conversationHistory || interview.conversationHistory || []).slice(-3)));
+    form.append('conversation_history', JSON.stringify((requestMeta.conversationHistory || interview.conversationHistory || []).slice(-2)));
     form.append('current_example', requestMeta.currentExample || interview.currentExample || '');
     form.append('duration_ms', String(Number.isFinite(requestMeta.durationMs) ? requestMeta.durationMs : (interview.lastRecordingDurationMs || 0)));
     form.append('recording_id', requestMeta.recordingId || requestMeta.id || '');
@@ -5301,6 +5331,7 @@ main{width:100%;height:100%}
         throw error;
       }
       console.log('[NOVA] Gemini result', payload);
+      if (payload?.timing) console.log('[NOVA PERF] backend', payload.timing);
       novaTurnLog('api_200', { questionId: requestMeta.questionId || interview.questionId });
       return payload;
     } catch (error) {
@@ -5433,19 +5464,85 @@ main{width:100%;height:100%}
 
   function stopVoiceActivityDetection() {
     interview.vadActive = false;
+    interview.vadReady = false;
     interview.vadToken += 1;
+
     if (interview.vadFrame) {
       cancelAnimationFrame(interview.vadFrame);
       interview.vadFrame = null;
     }
-    try { interview.analyser?.disconnect?.(); } catch {}
-    interview.analyser = null;
 
+    try { interview.audioSource?.disconnect?.(); } catch {}
+    try { interview.analyser?.disconnect?.(); } catch {}
+    interview.audioSource = null;
+    interview.analyser = null;
+  }
+
+  async function getOrCreateNovaAudioContext() {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) throw microphoneError(
+      'AUDIO_CONTEXT_UNAVAILABLE',
+      'El navegador no permite analizar el audio del micrófono.'
+    );
+
+    let context = interview.audioContext;
+    if (!context || context.state === 'closed') {
+      context = new AudioContextClass();
+      interview.audioContext = context;
+      novaVadDebug('audio_context_created', {
+        state: context.state,
+        sampleRate: context.sampleRate
+      });
+    }
+
+    if (context.state === 'suspended') {
+      try { await context.resume(); }
+      catch (error) {
+        throw microphoneError(
+          'AUDIO_CONTEXT_SUSPENDED',
+          'No pude activar la escucha automática.',
+          error
+        );
+      }
+    }
+
+    if (context.state !== 'running') {
+      throw microphoneError(
+        'AUDIO_CONTEXT_NOT_RUNNING',
+        'El sistema de escucha no quedó activo.'
+      );
+    }
+    return context;
+  }
+
+  function closeNovaAudioContext() {
     const context = interview.audioContext;
     interview.audioContext = null;
     if (context && context.state !== 'closed') {
       try { context.close().catch(() => {}); } catch {}
     }
+  }
+
+  async function waitForVadReady(lifecycle, listenToken, recordingId) {
+    const startedAt = performance.now();
+    while (performance.now() - startedAt < DESPEGA_AI.vadReadyTimeoutMs) {
+      if (
+        currentStep !== 'step3' ||
+        lifecycle !== interview.lifecycleId ||
+        listenToken !== interview.listenTurnToken ||
+        recordingId !== interview.activeRecordingId
+      ) return false;
+
+      if (isActuallyListening()) return true;
+      await new Promise(resolve => setTimeout(resolve, 30));
+    }
+    novaTurnLog('vad_ready_timeout', {
+      contextState: interview.audioContext?.state || 'none',
+      vadActive: interview.vadActive,
+      vadReady: interview.vadReady,
+      recordingState: interview.recordingState
+    });
+    return false;
   }
 
   function cancelRecordingWithoutProcessing() {
@@ -5519,7 +5616,7 @@ main{width:100%;height:100%}
     }
   }
 
-  function startVoiceActivityDetection(
+  async function startVoiceActivityDetection(
     stream,
     lifecycle,
     listenToken = interview.listenTurnToken,
@@ -5527,20 +5624,15 @@ main{width:100%;height:100%}
   ) {
     stopVoiceActivityDetection();
     interview.vadActive = false;
+    interview.vadReady = false;
     const token = ++interview.vadToken;
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-
-    if (!AudioContextClass) {
-      novaVadDebug('fallback_manual', { reason: 'audio_context_unavailable' });
-      return false;
-    }
 
     let context;
     let source;
     let analyser;
 
     try {
-      context = new AudioContextClass();
+      context = await getOrCreateNovaAudioContext();
       source = context.createMediaStreamSource(stream);
       analyser = context.createAnalyser();
       analyser.fftSize = 512;
@@ -5548,11 +5640,19 @@ main{width:100%;height:100%}
       source.connect(analyser);
     } catch (error) {
       console.warn('[NOVA VAD] setup_failed', error);
-      novaVadDebug('fallback_manual', { reason: 'vad_setup_failed' });
+      novaVadDebug('fallback_manual', {
+        reason: error?.code || 'vad_setup_failed',
+        contextState: interview.audioContext?.state || 'none'
+      });
       return false;
     }
 
-    interview.audioContext = context;
+    if (context.state !== 'running') {
+      novaVadDebug('fallback_manual', { reason: 'audio_context_not_running', state: context.state });
+      return false;
+    }
+
+    interview.audioSource = source;
     interview.analyser = analyser;
     interview.speechDetected = false;
     interview.vadActive = true;
@@ -5562,18 +5662,6 @@ main{width:100%;height:100%}
       state: context.state,
       sampleRate: context.sampleRate
     });
-
-    if (context.state === 'suspended') {
-      try {
-        context.resume?.().then(() => {
-          novaVadDebug('audio_context_resumed', { state: context.state });
-        }).catch((error) => {
-          console.warn('[NOVA VAD] resume_failed', error);
-        });
-      } catch (error) {
-        console.warn('[NOVA VAD] resume_failed', error);
-      }
-    }
 
     const samples = new Uint8Array(analyser.fftSize);
     const calibrationSamples = [];
@@ -5636,6 +5724,14 @@ main{width:100%;height:100%}
 
           calibrated = true;
           listeningStartedAt = performance.now();
+          interview.vadReady = Boolean(
+            interview.recordingState === 'recording' &&
+            interview.mediaRecorder?.state === 'recording' &&
+            interview.vadActive &&
+            interview.audioContext?.state === 'running' &&
+            recordingId === interview.activeRecordingId &&
+            listenToken === interview.listenTurnToken
+          );
 
           novaVadDebug('calibration_complete', {
             noiseFloor: Number(base.toFixed(5)),
@@ -5650,6 +5746,8 @@ main{width:100%;height:100%}
             interview.vadActive
           ) {
             setAgentState('listening');
+            novaPerfMark('vad_ready', { recordingId, questionId: interview.questionId });
+            novaPerfDuration('tts_end', 'vad_ready', { phase: 'listen_ready_ms' });
             if (recordCaption) recordCaption.textContent = 'Escuchando…';
             if (recordHelper) recordHelper.textContent = '';
             setVoiceStatus('Escuchando…', 'processing');
@@ -5944,7 +6042,7 @@ main{width:100%;height:100%}
 
       let vadStarted = false;
       try {
-        vadStarted = startVoiceActivityDetection(stream, lifecycle, listenToken, recordingId) === true;
+        vadStarted = await startVoiceActivityDetection(stream, lifecycle, listenToken, recordingId);
       } catch (vadError) {
         console.warn('[NOVA VAD] setup_failed', vadError);
         vadStarted = false;
@@ -5982,6 +6080,16 @@ main{width:100%;height:100%}
         return false;
       }
 
+      const vadReady = await waitForVadReady(lifecycle, listenToken, recordingId);
+      if (!vadReady) {
+        novaTurnLog('vad_not_ready', {
+          recordingId,
+          contextState: interview.audioContext?.state || 'none'
+        });
+        cancelRecordingWithoutProcessing();
+        return false;
+      }
+
       interview.durationTimer = setInterval(() => {
         if (!interview.speechDetected) return;
         const seconds = (Date.now() - interview.startedAt) / 1000;
@@ -6011,6 +6119,7 @@ main{width:100%;height:100%}
     interview.stopRequested = true;
     interview.stopReason = reason;
     interview.lastRecordingDurationMs = Math.max(0, Date.now() - interview.startedAt);
+    novaPerfMark('recording_end', { reason, durationMs: interview.lastRecordingDurationMs });
     stopVoiceActivityDetection();
 
     clearTimeout(interview.maxTimer);
@@ -6057,7 +6166,8 @@ main{width:100%;height:100%}
     const listenToken = ++interview.listenTurnToken;
     novaTurnLog('manual_restart', { source, lifecycle, listenToken });
 
-    return startRealRecording(event, { lifecycle, listenToken, automatic: false });
+    const started = await startRealRecording(event, { lifecycle, listenToken, automatic: false });
+    return Boolean(started && isActuallyListening());
   }
 
   async function toggleRealRecording(event) {
@@ -6140,7 +6250,7 @@ main{width:100%;height:100%}
       answersCount: interview.answersCount,
       usefulAnswersCount: interview.usefulAnswersCount,
       profile: { ...loadPriorProfile(), ...interview.profile },
-      conversationHistory: (interview.conversationHistory || []).slice(-3),
+      conversationHistory: (interview.conversationHistory || []).slice(-2),
       dimensionStatus: { ...interview.dimensionStatus },
       currentExample: interview.currentExample || '',
       durationMs,
@@ -6176,7 +6286,10 @@ main{width:100%;height:100%}
 
     try {
       console.log('[NOVA AUDIO] transcription_start', { recordingId });
+      novaPerfMark('api_start', { recordingId, questionId: queueItem.questionId });
       const result = await callDespegaAI(blob, queueItem);
+      novaPerfMark('api_end', { recordingId, backendTiming: result?.timing || null });
+      novaPerfDuration('api_start', 'api_end', { phase: 'api_ms' });
       if (
         currentStep !== 'step3' ||
         interview.activeRequestRecordingId !== recordingId
@@ -6369,7 +6482,7 @@ main{width:100%;height:100%}
       aiInsights.appendChild(chip);
     });
 
-    if (aiConfirmation) aiConfirmation.hidden = labels.length === 0;
+    return labels;
   }
 
   function normalizeNovaEmotion(result) {
@@ -6508,6 +6621,7 @@ main{width:100%;height:100%}
     localStorage.setItem('despegaCurrentExample', interview.currentExample);
 
     refreshInterviewUI();
+    clearDetectedTurn();
     console.log('[NOVA FLOW] next_dimension', {
       nextDimension,
       answersCount: interview.answersCount,
@@ -6599,7 +6713,6 @@ main{width:100%;height:100%}
     });
 
     if (aiTranscript) aiTranscript.textContent = result.transcript || 'No recibimos una transcripción.';
-    renderInsights(result);
 
     const sufficiency = String(result?.answer_sufficiency || 'sufficient').toLowerCase();
     const needsMore = Boolean(result?.clarification_needed)
@@ -6607,12 +6720,6 @@ main{width:100%;height:100%}
       || sufficiency === 'partial';
     const emotion = needsMore ? 'curious' : normalizeNovaEmotion(result);
     setAgentEmotion(emotion);
-    setAgentState(needsMore ? 'curious' : 'celebrating');
-
-    if (confirmationTitle) confirmationTitle.textContent = 'Detectado';
-    if (aiAutoNext) aiAutoNext.textContent = '';
-    aiConfirmation.hidden = aiInsights ? aiInsights.children.length === 0 : true;
-    micPanel.hidden = true;
     setVoiceStatus('Respuesta procesada.', 'ok');
 
     const reaction = String(result?.nova_reaction || (
@@ -6620,6 +6727,13 @@ main{width:100%;height:100%}
         ? 'Para poder ayudarte mejor, necesito un poquito más de información.'
         : 'Gracias por contármelo.'
     )).trim();
+
+    const detectedVisible = showDetectedTurn(result, expectedRecordingId);
+    if (detectedVisible) {
+      setAgentState('confirming');
+      await holdDetectedTurn();
+    }
+    clearDetectedTurn();
 
     await advanceInterviewAutomatically(result, reaction);
     return true;
@@ -6631,8 +6745,7 @@ main{width:100%;height:100%}
     interview.activeRecordingId = null;
     interview.activeRequestRecordingId = null;
     interview.isSendingAudio = false;
-    aiConfirmation.hidden = true;
-    micPanel.hidden = false;
+    clearDetectedTurn();
     if (recordCaption) recordCaption.textContent = 'Toca el micrófono para continuar';
     if (recordHelper) recordHelper.textContent = 'El botón queda disponible como respaldo si la escucha automática no puede iniciarse.';
     setAgentState('idle');

@@ -947,3 +947,16 @@
   opacity:0!important;
   visibility:hidden!important;
 }
+
+
+/* PLAN 5 — confirming is a brief, non-speaking state. */
+#step3View .nova-orb[data-state="confirming"] .agent-orb-core{
+  animation:nova2SoftConfirm .65s ease-out 1!important;
+}
+#step3View .nova-orb[data-state="confirming"] .orb-face{
+  opacity:1!important;
+  visibility:visible!important;
+}
+#step3View .nova-orb[data-state="confirming"] .nova-speaking-wave{
+  display:none!important;
+}
