@@ -8,7 +8,7 @@ const MAX_AUDIO_BYTES = 8 * 1024 * 1024;
 const MAX_QUESTION_CHARS = 1000;
 const MAX_QUESTION_ID_CHARS = 100;
 const MAX_EXAMPLE_CHARS = 1500;
-const MAX_HISTORY_TURNS = 10;
+const MAX_HISTORY_TURNS = 3;
 const MAX_PROFILE_ITEMS = 30;
 const RATE_LIMIT_PER_MINUTE = 20;
 const MODEL = Deno.env.get("GEMINI_MODEL") || "gemini-3.8-flash";
@@ -25,6 +25,30 @@ const VALID_INTENTS = new Set([
 const VALID_SUFFICIENCY = new Set(["sufficient", "partial", "insufficient"]);
 const VALID_FOLLOW_UP = new Set(["deepen", "clarify", "connect", "switch_dimension", "close"]);
 const PROFILE_FIELDS = ["goals", "interests", "skills", "experience", "barriers", "training_needs"];
+const CORE_DIMENSIONS = ["goal", "interests", "skills", "experience", "barriers"] as const;
+const VALID_DIMENSIONS = new Set<string>(CORE_DIMENSIONS);
+const QUESTION_MAP: Record<string, { question: string; example: string }> = {
+  goal: {
+    question: "¿Qué te gustaría hacer o aprender en este momento?",
+    example: "Por ejemplo: terminar tus estudios, aprender una habilidad, conseguir tu primer trabajo o estudiar una carrera técnica.",
+  },
+  interests: {
+    question: "¿Qué áreas o temas te interesan más?",
+    example: "Por ejemplo: tecnología, diseño, negocios, salud, mecánica, educación o atención al cliente.",
+  },
+  skills: {
+    question: "¿Qué cosas sientes que haces bien?",
+    example: "Por ejemplo: organizar, explicar ideas, vender, reparar cosas, usar una computadora o ayudar a otras personas.",
+  },
+  experience: {
+    question: "¿Hay algo que ya hayas hecho, aunque no haya sido un trabajo formal?",
+    example: "Por ejemplo: ayudar en un negocio familiar, vender productos, cuidar personas o hacer proyectos del colegio.",
+  },
+  barriers: {
+    question: "¿Hay algo que hoy te dificulte avanzar hacia lo que quieres?",
+    example: "Por ejemplo: falta de tiempo, dinero, internet, transporte, responsabilidades en casa o no saber por dónde empezar.",
+  },
+};
 const rateBuckets = new Map<string, { count: number; resetAt: number }>();
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
@@ -160,10 +184,19 @@ function allowRequest(key: string) {
   return true;
 }
 
-const responseSchema = {
+const transcriptionSchema = {
   type: "OBJECT",
   properties: {
     transcript: { type: "STRING" },
+    speech_detected: { type: "BOOLEAN" },
+    quality: { type: "STRING", enum: ["good", "uncertain", "inaudible"] },
+  },
+  required: ["transcript", "speech_detected", "quality"],
+};
+
+const analysisSchema = {
+  type: "OBJECT",
+  properties: {
     turn_intent: { type: "STRING" },
     control_response: { type: "STRING" },
     nova_reaction: { type: "STRING" },
@@ -177,6 +210,10 @@ const responseSchema = {
     training_needs: { type: "ARRAY", items: { type: "STRING" } },
     evidence: { type: "ARRAY", items: { type: "STRING" } },
     missing_dimensions: { type: "ARRAY", items: { type: "STRING" } },
+    covered_dimensions: { type: "ARRAY", items: { type: "STRING" } },
+    skipped_dimensions: { type: "ARRAY", items: { type: "STRING" } },
+    next_dimension: { type: "STRING" },
+    interview_complete: { type: "BOOLEAN" },
     answer_sufficiency: { type: "STRING" },
     clarification_needed: { type: "BOOLEAN" },
     clarification_question: { type: "STRING" },
@@ -190,9 +227,10 @@ const responseSchema = {
     memory_summary: { type: "STRING" },
   },
   required: [
-    "transcript", "turn_intent", "control_response", "nova_reaction", "nova_emotion",
+    "turn_intent", "control_response", "nova_reaction", "nova_emotion",
     "summary", "goals", "interests", "skills", "experience", "barriers", "training_needs",
-    "evidence", "missing_dimensions", "answer_sufficiency", "clarification_needed",
+    "evidence", "missing_dimensions", "covered_dimensions", "skipped_dimensions",
+    "next_dimension", "interview_complete", "answer_sufficiency", "clarification_needed",
     "clarification_question", "rephrased_question", "next_question", "example_response",
     "follow_up_strategy", "profile_completeness", "should_finish", "final_message", "memory_summary",
   ],
@@ -207,8 +245,27 @@ async function persistTurn(args: {
   usefulAnswersCount: number;
   turnsCount: number;
   durationMs: number | null;
+  recordingId: string;
 }) {
   if (!supabaseAdmin || !args.sessionId) return false;
+
+  if (args.recordingId) {
+    const { data: existingTurn, error: duplicateCheckError } = await supabaseAdmin
+      .from("nova_turns")
+      .select("id")
+      .eq("session_id", args.sessionId)
+      .eq("recording_id", args.recordingId)
+      .maybeSingle();
+
+    if (duplicateCheckError) throw duplicateCheckError;
+    if (existingTurn) {
+      console.log("Duplicate recording ignored", JSON.stringify({
+        sessionId: args.sessionId,
+        recordingId: args.recordingId,
+      }));
+      return true;
+    }
+  }
 
   const now = new Date().toISOString();
   const usefulCurrent =
@@ -264,6 +321,7 @@ async function persistTurn(args: {
       follow_up_strategy: text(args.result.follow_up_strategy, 100),
       answer_sufficiency: text(args.result.answer_sufficiency, 100),
       duration_ms: args.durationMs,
+      recording_id: args.recordingId || null,
     });
 
   if (turnError) throw turnError;
@@ -274,21 +332,27 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function geminiRequestBody(prompt: string, audioType: string, audioBase64: string) {
+function geminiRequestBody(
+  prompt: string,
+  responseSchema: Record<string, unknown>,
+  audioType?: string,
+  audioBase64?: string,
+  temperature = 0.2,
+) {
+  const parts: Array<Record<string, unknown>> = [{ text: prompt }];
+  if (audioBase64) {
+    parts.push({
+      inlineData: {
+        mimeType: audioType || "audio/webm",
+        data: audioBase64,
+      },
+    });
+  }
+
   return {
-    contents: [{
-      role: "user",
-      parts: [
-        { text: prompt },
-        {
-          inlineData: {
-            mimeType: audioType || "audio/webm",
-            data: audioBase64,
-          },
-        },
-      ],
-    }],
+    contents: [{ role: "user", parts }],
     generationConfig: {
+      temperature,
       responseMimeType: "application/json",
       responseSchema,
     },
@@ -298,54 +362,73 @@ function geminiRequestBody(prompt: string, audioType: string, audioBase64: strin
 async function callGeminiResilient(args: {
   apiKey: string;
   prompt: string;
-  audioType: string;
-  audioBase64: string;
+  responseSchema: Record<string, unknown>;
+  audioType?: string;
+  audioBase64?: string;
+  temperature?: number;
 }) {
   const attempts = [
-    { model: MODEL, delayMs: 0, label: "primary" },
-    { model: MODEL, delayMs: 650, label: "primary_retry" },
-    { model: FALLBACK_MODEL, delayMs: 900, label: "fallback" },
+    { model: FALLBACK_MODEL, timeoutMs: 4500, label: "primary_fast" },
+    { model: MODEL, timeoutMs: 4000, label: "fallback_quality" },
   ];
 
   let lastResponse: Response | null = null;
   let lastPayload: any = null;
 
   for (const attempt of attempts) {
-    if (attempt.delayMs) await sleep(attempt.delayMs);
-
     const endpoint =
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(attempt.model)}:generateContent?key=${encodeURIComponent(args.apiKey)}`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), attempt.timeoutMs);
 
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(geminiRequestBody(args.prompt, args.audioType, args.audioBase64)),
-    });
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(geminiRequestBody(
+          args.prompt,
+          args.responseSchema,
+          args.audioType,
+          args.audioBase64,
+          args.temperature ?? 0.2,
+        )),
+        signal: controller.signal,
+      });
 
-    const payload = await response.json();
-    lastResponse = response;
-    lastPayload = payload;
+      const payload = await response.json();
+      lastResponse = response;
+      lastPayload = payload;
 
-    if (response.ok) {
-      if (attempt.label !== "primary") {
-        console.log("Gemini recovery", JSON.stringify({
-          path: attempt.label,
-          model: attempt.model,
-          status: response.status,
-        }));
+      if (response.ok) {
+        if (attempt.label !== "primary_fast") {
+          console.log("Gemini recovery", JSON.stringify({
+            path: attempt.label,
+            model: attempt.model,
+            status: response.status,
+          }));
+        }
+        return { response, payload, model: attempt.model, path: attempt.label };
       }
-      return { response, payload, model: attempt.model, path: attempt.label };
+
+      const retryable = [429, 500, 502, 503, 504].includes(response.status);
+      console.error("Gemini attempt failed", JSON.stringify({
+        path: attempt.label,
+        model: attempt.model,
+        status: response.status,
+        code: payload?.error?.status || payload?.error?.code || null,
+      }));
+
+      if (!retryable) break;
+    } catch (error) {
+      console.error("Gemini attempt failed", JSON.stringify({
+        path: attempt.label,
+        model: attempt.model,
+        status: "timeout_or_network",
+        code: error instanceof Error ? error.name : "UNKNOWN",
+      }));
+    } finally {
+      clearTimeout(timeout);
     }
-
-    const retryable = [429, 500, 502, 503, 504].includes(response.status);
-    console.error("Gemini attempt failed", JSON.stringify({
-      path: attempt.label,
-      model: attempt.model,
-      status: response.status,
-      code: payload?.error?.status || payload?.error?.code || null,
-    }));
-
-    if (!retryable) break;
   }
 
   return {
@@ -417,6 +500,7 @@ Deno.serve(async (req: Request) => {
       }, 429, origin);
     }
 
+    const recordingId = text(form.get("recording_id"), 160) || crypto.randomUUID();
     const question = text(form.get("question"), MAX_QUESTION_CHARS);
     const questionId = text(form.get("question_id"), MAX_QUESTION_ID_CHARS);
     const currentExample = text(form.get("current_example"), MAX_EXAMPLE_CHARS);
@@ -439,94 +523,195 @@ Deno.serve(async (req: Request) => {
     } catch {}
 
     const onboardingData = parseJsonObject(form.get("onboarding_data"));
+    const rawDimensionStatus = parseJsonObject(form.get("dimension_status")) || {};
+    const dimensionStatus: Record<string, string> = {};
+    for (const dimension of CORE_DIMENSIONS) {
+      const value = String(rawDimensionStatus[dimension] || "pending").toLowerCase();
+      dimensionStatus[dimension] = value === "covered" || value === "skipped" ? value : "pending";
+    }
     const bytes = new Uint8Array(await audio.arrayBuffer());
     const audioBase64 = toBase64(bytes);
 
+    console.log("Nova transcription start", JSON.stringify({
+      sessionId,
+      recordingId,
+      bytes: audio.size,
+      audioType: audio.type,
+    }));
+
+    const transcriptionPrompt = `
+Transcribe literalmente este audio hablado en español.
+
+REGLAS OBLIGATORIAS:
+- Devuelve exactamente lo que escuchas.
+- No respondas al contenido.
+- No interpretes intención, objetivos, intereses ni habilidades.
+- No uses contexto de conversaciones anteriores.
+- No completes palabras usando conocimiento del dominio.
+- No inventes información.
+- Si no hay voz humana comprensible, speech_detected=false.
+- Si escuchas voz pero hay partes relevantes que no puedes entender, usa quality="uncertain".
+- Si el audio es esencialmente incomprensible, usa quality="inaudible".
+- Usa quality="good" solo cuando la transcripción sea suficientemente clara.
+
+Devuelve únicamente el JSON solicitado por el schema.
+`;
+
+    const transcriptionGemini = await callGeminiResilient({
+      apiKey: geminiKey,
+      prompt: transcriptionPrompt,
+      responseSchema: transcriptionSchema,
+      audioType: audio.type || "audio/webm",
+      audioBase64,
+      temperature: 0,
+    });
+
+    if (!transcriptionGemini.response?.ok) {
+      return json({
+        error: "TRANSCRIPTION_TEMPORARILY_UNAVAILABLE",
+        message: "No pude transcribir el audio en este momento. Intenta otra vez.",
+        retryable: true,
+      }, 503, origin);
+    }
+
+    const transcriptionOutput =
+      transcriptionGemini.payload?.candidates?.[0]?.content?.parts
+        ?.map((part: any) => part?.text || "")
+        .join("")
+        .trim() || "";
+
+    let transcription: Record<string, any>;
+    try {
+      transcription = JSON.parse(transcriptionOutput);
+    } catch {
+      console.error("Invalid transcription JSON", transcriptionOutput.slice(0, 500));
+      return json({ error: "INVALID_TRANSCRIPTION_JSON", retryable: true }, 502, origin);
+    }
+
+    const transcript = text(transcription.transcript, 3000);
+    const speechDetected = Boolean(transcription.speech_detected);
+    const transcriptionQuality = ["good", "uncertain", "inaudible"].includes(String(transcription.quality))
+      ? String(transcription.quality)
+      : "uncertain";
+
+    console.log("Nova transcription result", JSON.stringify({
+      sessionId,
+      recordingId,
+      speechDetected,
+      transcriptionQuality,
+      transcriptLength: transcript.length,
+    }));
+
+    if (!speechDetected || !transcript || transcriptionQuality !== "good") {
+      return json({
+        error: "TRANSCRIPTION_UNCERTAIN",
+        message: "No pude entender bien esa respuesta. Inténtalo otra vez.",
+        retryable: true,
+        recording_id: recordingId,
+        transcript,
+        transcription_quality: transcriptionQuality,
+        speech_detected: speechDetected,
+      }, 422, origin);
+    }
+
     const prompt = `
-Eres NOVA, la agente conversacional de DESPEGA+, una plataforma de orientación educativa y laboral para jóvenes.
+TRANSCRIPCIÓN LITERAL E INMUTABLE DEL TURNO:
+${transcript}
 
-PERSONALIDAD:
-- Cálida, optimista, curiosa y breve.
-- Natural y conversacional; no suenes como formulario.
-- Nunca infantilices, juzgues ni uses entusiasmo exagerado ante dificultades.
-- Haz UNA sola pregunta por turno.
+REGLA DE EVIDENCIA:
+- Analiza únicamente la transcripción literal anterior.
+- No cambies, completes ni reescribas lo que el usuario dijo.
+- Extrae objetivos, intereses, habilidades, experiencia, barreras y necesidades solo cuando estén explícitamente respaldados por esa transcripción.
+- El contexto histórico sirve para continuidad conversacional, nunca para inventar evidencia del turno actual.
 
-OBJETIVO:
-Construir progresivamente un perfil con evidencia sobre:
-1) objetivos,
-2) intereses,
-3) habilidades o experiencia,
-4) barreras o necesidades.
 
-MEMORIA Y CONTINUIDAD:
-- Lee primero la respuesta actual y el historial reciente.
-- Identifica qué información nueva acaba de aportar el usuario.
-- No preguntes algo que ya esté explícito en la respuesta o en la memoria.
-- No formules una pregunta solo porque exista una dimensión pendiente.
-- Cuando el usuario mencione algo útil, profundiza naturalmente antes de cambiar de tema.
-- Cambia de dimensión solo cuando el hilo actual ya esté suficientemente claro o cuando falte una dimensión crítica.
-- La siguiente pregunta debe poder reconocerse como una reacción a lo que el usuario acaba de decir.
-- Evita preguntas genéricas que podrías haber hecho sin escuchar la respuesta.
-- Si puedes conectar lo nuevo con algo dicho antes, hazlo de forma breve y natural.
+Eres NOVA, la guía conversacional de DESPEGA+, una plataforma de orientación educativa y laboral para jóvenes.
 
-ESTRATEGIA DE SEGUIMIENTO:
-follow_up_strategy debe ser EXACTAMENTE uno de:
-- deepen: profundizar en algo relevante recién mencionado.
-- clarify: aclarar una respuesta ambigua o insuficiente.
-- connect: conectar la respuesta actual con información previa.
-- switch_dimension: cambiar a otra dimensión realmente pendiente.
-- close: cerrar porque ya hay suficiente información.
+IDENTIDAD Y TONO:
+- Cercana, juvenil, optimista, clara y respetuosa.
+- Energética sin exagerar; nunca infantil ni condescendiente.
+- Usa español simple y frases cortas.
+- Reconoce brevemente lo que el joven acaba de decir cuando aporte valor.
+- No repitas muletillas ni elogios vacíos.
+- Haz UNA sola pregunta a la vez.
 
-EJEMPLOS:
-Usuario: "Me gustaría aprender programación."
-MAL: "¿Has programado antes?"
-BIEN: "¿Qué te gustaría llegar a crear o hacer con programación?"
+OBJETIVO DE LA ENTREVISTA:
+Construir un perfil breve usando SOLO estas 5 dimensiones:
+1. goal: objetivo actual.
+2. interests: áreas o temas de interés.
+3. skills: habilidades.
+4. experience: experiencia formal o informal.
+5. barriers: barreras actuales.
 
-Usuario: "Quiero hacer aplicaciones."
-BIEN: "¿Hay algún problema o necesidad que te gustaría resolver con una aplicación?"
+MAPA OFICIAL:
+${JSON.stringify(QUESTION_MAP)}
 
-Usuario: "Quiero ayudar a estudiantes a encontrar oportunidades."
-BIEN: "¿Qué tipo de oportunidades te gustaría que pudieran encontrar primero?"
+REGLAS DE COBERTURA:
+- covered_dimensions debe incluir todas las dimensiones que la respuesta actual cubra con evidencia explícita.
+- skipped_dimensions debe incluir una dimensión solo si el usuario expresa que no sabe, no quiere responder o pide saltarla.
+- No preguntes nuevamente una dimensión cuyo estado ya sea covered o skipped.
+- Una sola respuesta puede cubrir varias dimensiones.
+- No inventes habilidades, experiencia, barreras ni intereses.
+- Si el usuario cuenta experiencia informal, reconócela como experiencia sin exagerar.
+- Si menciona una barrera, responde con empatía breve, no con entusiasmo.
+- next_dimension debe ser una de: goal, interests, skills, experience, barriers, o cadena vacía al cerrar.
+- next_question debe corresponder a next_dimension. Puedes adaptar ligeramente la redacción al contexto, pero debe perseguir la misma dimensión.
+- example_response debe ser un ejemplo corto y coherente con next_dimension.
+- Si Gemini no necesita adaptar la pregunta, usa la pregunta oficial del MAPA.
+- Nunca generes una sexta dimensión.
 
-Usuario: "Me gustan los videojuegos."
-MAL: "¿Cuáles son tus intereses?"
-BIEN: "¿Te atrae más jugarlos o también te gustaría aprender cómo se crean?"
+MÁXIMO DE PREGUNTAS:
+- El frontend tiene un máximo absoluto de 5 preguntas principales.
+- Ayuda a terminar antes si varias dimensiones ya quedaron cubiertas.
+- interview_complete puede ser true cuando ya exista información suficiente para construir una ruta y se hayan resuelto al menos 3 dimensiones; prioriza cubrir objetivo + interés + (habilidad o experiencia) y, si fue mencionada o preguntada, barrera.
+- should_finish debe tener el mismo valor que interview_complete.
+- Si todas las dimensiones están cubiertas o skipped, interview_complete=true.
+- No fuerces una pregunta redundante solo para llegar a 5.
 
 INTENCIONES:
-Clasifica turn_intent EXACTAMENTE como uno de:
+turn_intent debe ser EXACTAMENTE uno de:
 answer, repeat_question, repeat_example, explain_question, pause, skip_question.
 
-REGLAS CRÍTICAS:
-- Si el usuario dice "repítela", "otra vez" o "qué me preguntaste", usa repeat_question.
-- Si dice "no entendí", usa explain_question y reformula la MISMA pregunta.
-- Si pide repetir el ejemplo, usa repeat_example.
-- Si pide saltar, usa skip_question y formula next_question sobre OTRA dimensión pendiente.
-- Las intenciones de control NO agregan información al perfil.
-- Para una intención de control, deja goals/interests/skills/experience/barriers/training_needs/evidence vacíos.
-- No infieras atributos sensibles ni condiciones que el usuario no haya declarado.
-- Si la respuesta es vaga, usa clarification_needed=true, follow_up_strategy=clarify y formula una aclaración breve.
+CONTROLES:
+- "repítela", "otra vez", "qué me preguntaste" => repeat_question.
+- "no entendí" => explain_question y reformula la misma dimensión.
+- pedir repetir ejemplo => repeat_example.
+- pedir saltar / "prefiero no responder" => skip_question; marca la dimensión actual como skipped si su ID es una dimensión válida.
+- Las intenciones de control no agregan datos al perfil.
+- Para control, deja goals/interests/skills/experience/barriers/training_needs/evidence vacíos.
+- pause no completa la entrevista.
 - answer_sufficiency solo puede ser sufficient, partial o insufficient.
-- Si es insufficient, no extraigas datos nuevos del perfil.
-- Solo usa should_finish=true cuando, contando esta respuesta, existan al menos 3 respuestas útiles y haya evidencia de objetivo + interés + (habilidad o experiencia) + barrera/necesidad.
-- Si faltan datos y el hilo actual ya está claro, usa switch_dimension hacia la dimensión faltante más importante.
-- profile_completeness debe estar entre 0 y 100.
+- Si la respuesta es vaga, clarification_needed=true y haz una aclaración breve sobre la MISMA dimensión.
+- Para interests, mencionar al menos un área, tema o actividad concreta (por ejemplo "tecnología", "diseño", "negocios") ES suficiente: marca interests como covered y NO pidas aclaración adicional.
+- Si es insufficient, no extraigas datos nuevos.
+- profile_completeness entre 0 y 100.
+
+PERSONALIDAD EN REACCIONES:
+- Objetivo claro: "Perfecto, ya tengo más claro hacia dónde quieres avanzar."
+- Experiencia informal: "Eso también cuenta como experiencia."
+- Barrera: "Entiendo. Voy a tenerlo en cuenta para tu ruta."
+- Evita repetir exactamente estas frases en todos los turnos.
+- Mantén nova_reaction en una sola frase breve.
 
 PREGUNTA ACTUAL: ${question}
-ID: ${questionId}
+ID / DIMENSIÓN ACTUAL: ${questionId}
 RESPUESTAS ÚTILES PREVIAS: ${usefulAnswersCount}
 TURNOS PREVIOS: ${turnsCount}
 EJEMPLO ACTUAL: ${currentExample}
+ESTADO DE DIMENSIONES: ${JSON.stringify(dimensionStatus)}
 PERFIL: ${JSON.stringify(profile)}
 HISTORIAL RECIENTE: ${JSON.stringify(history)}
 
 Devuelve solo el JSON solicitado por el schema.
-`;
+`
+
+    console.log("Nova analysis start", JSON.stringify({ sessionId, recordingId }));
 
     const gemini = await callGeminiResilient({
       apiKey: geminiKey,
       prompt,
-      audioType: audio.type || "audio/webm",
-      audioBase64,
+      responseSchema: analysisSchema,
+      temperature: 0.2,
     });
     const geminiResponse = gemini.response;
     const payload = gemini.payload;
@@ -561,7 +746,9 @@ Devuelve solo el JSON solicitado por el schema.
       return json({ error: "INVALID_GEMINI_JSON" }, 502, origin);
     }
 
-    result.transcript = text(result.transcript, 3000);
+    result.transcript = transcript;
+    result.transcription_quality = transcriptionQuality;
+    result.recording_id = recordingId;
     result.turn_intent = VALID_INTENTS.has(String(result.turn_intent)) ? String(result.turn_intent) : "answer";
     result.answer_sufficiency = VALID_SUFFICIENCY.has(String(result.answer_sufficiency))
       ? String(result.answer_sufficiency)
@@ -586,10 +773,33 @@ Devuelve solo el JSON solicitado por el schema.
     for (const field of PROFILE_FIELDS) result[field] = stringArray(result[field]);
     result.evidence = stringArray(result.evidence, 20);
     result.missing_dimensions = stringArray(result.missing_dimensions, 10);
+    result.covered_dimensions = stringArray(result.covered_dimensions, 5).filter((value) => VALID_DIMENSIONS.has(value));
+    result.skipped_dimensions = stringArray(result.skipped_dimensions, 5).filter((value) => VALID_DIMENSIONS.has(value));
+    result.next_dimension = VALID_DIMENSIONS.has(String(result.next_dimension || ""))
+      ? String(result.next_dimension)
+      : "";
+    result.interview_complete = Boolean(result.interview_complete);
+    result.should_finish = result.interview_complete;
+
+    if (result.turn_intent === "answer" && questionId === "interests") {
+      const transcript = String(result.transcript || "").trim();
+      const normalizedTranscript = transcript.toLowerCase();
+      const nonAnswer = !transcript
+        || /^(no|no sé|no se|ninguno|ninguna|prefiero no responder|paso)$/i.test(normalizedTranscript);
+
+      if (!nonAnswer && (result.interests.length > 0 || transcript.length >= 3)) {
+        result.answer_sufficiency = "sufficient";
+        result.clarification_needed = false;
+        if (!result.covered_dimensions.includes("interests")) result.covered_dimensions.push("interests");
+        if (result.next_dimension === "interests") result.next_dimension = "";
+      }
+    }
 
     if (result.answer_sufficiency === "insufficient") {
       for (const field of PROFILE_FIELDS) result[field] = [];
       result.evidence = [];
+      result.covered_dimensions = [];
+      result.interview_complete = false;
       result.should_finish = false;
       result.follow_up_strategy = "clarify";
     }
@@ -599,6 +809,9 @@ Devuelve solo el JSON solicitado por el schema.
       result.evidence = [];
       result.summary = "";
       result.memory_summary = "";
+      result.covered_dimensions = [];
+      result.skipped_dimensions = [];
+      result.interview_complete = false;
       result.should_finish = false;
       result.clarification_needed = false;
 
@@ -621,18 +834,49 @@ Devuelve solo el JSON solicitado por el schema.
         result.follow_up_strategy = "close";
       } else if (result.turn_intent === "skip_question") {
         result.control_response ||= "Está bien, podemos pasar a otra pregunta.";
-        result.next_question ||= "Cuéntame sobre otro aspecto que consideres importante para decidir tu siguiente paso.";
-        result.follow_up_strategy = "switch_dimension";
+        if (VALID_DIMENSIONS.has(questionId)) result.skipped_dimensions = [questionId];
+        const nextDimension = CORE_DIMENSIONS.find((dimension) =>
+          dimension !== questionId &&
+          dimensionStatus[dimension] === "pending"
+        ) || "";
+        result.next_dimension = nextDimension;
+        if (nextDimension) {
+          result.next_question = QUESTION_MAP[nextDimension].question;
+          result.example_response = QUESTION_MAP[nextDimension].example;
+        } else {
+          result.next_question = "";
+          result.example_response = "";
+          result.interview_complete = true;
+          result.should_finish = true;
+        }
+        result.follow_up_strategy = nextDimension ? "switch_dimension" : "close";
       }
     }
 
-    if (result.turn_intent === "answer" && result.should_finish) {
+    if (result.turn_intent === "answer") {
+      const projectedStatus = { ...dimensionStatus };
+      for (const dimension of result.covered_dimensions) projectedStatus[dimension] = "covered";
+      for (const dimension of result.skipped_dimensions) projectedStatus[dimension] = "skipped";
+      const resolvedCount = CORE_DIMENSIONS.filter((dimension) => projectedStatus[dimension] !== "pending").length;
       const currentIsUseful = result.answer_sufficiency === "sufficient";
       const usefulIncludingCurrent = usefulAnswersCount + (currentIsUseful ? 1 : 0);
-      if (usefulIncludingCurrent < 3) {
+
+      if (result.interview_complete && (usefulIncludingCurrent < 3 || resolvedCount < 3)) {
+        result.interview_complete = false;
         result.should_finish = false;
-      } else {
+      }
+
+      if (resolvedCount === CORE_DIMENSIONS.length && usefulIncludingCurrent >= 3) {
+        result.interview_complete = true;
+        result.should_finish = true;
+      }
+
+      if (result.interview_complete) {
         result.follow_up_strategy = "close";
+        result.next_dimension = "";
+        result.next_question = "";
+        result.example_response = "";
+        result.final_message ||= "¡Listo! Ya tengo lo necesario para construir tu ruta.";
       }
     }
 
@@ -647,12 +891,20 @@ Devuelve solo el JSON solicitado por el schema.
         usefulAnswersCount,
         turnsCount,
         durationMs,
+        recordingId,
       });
     } catch (error) {
       console.error("Persistence error", error);
     }
 
-    return json({ ...result, persistence_ok: persistenceOk }, 200, origin);
+    return json({
+      ...result,
+      recording_id: recordingId,
+      transcript,
+      transcription_quality: transcriptionQuality,
+      speech_detected: true,
+      persistence_ok: persistenceOk,
+    }, 200, origin);
   } catch (error) {
     console.error(error);
     return json({
