@@ -2909,7 +2909,7 @@ main{width:100%;height:100%}
             </section>
 
             <div class="visually-hidden" aria-live="polite">
-              <h2 id="step3Title">Conocerte mejor con Nova</h2>
+              <h2 id="novaA11yTitle">Nova</h2>
               <p id="agentIntro">Nova te hará preguntas breves y adaptará la conversación según tus respuestas.</p>
               <span id="agentLead">Pregunta actual:</span>
               <div id="aiQuestionBubble"></div>
@@ -3690,7 +3690,7 @@ main{width:100%;height:100%}
   const micPanel = $('#micPanel');
   const agentOrb = $('#agentOrb');
   const agentStateLabel = $('#agentStateLabel');
-  const agentGreeting = $('#step3Title');
+  const agentGreeting = $('#novaA11yTitle');
   const agentIntro = $('#agentIntro');
   const agentLead = $('#agentLead');
   const recordHelper = $('#recordHelper');
@@ -3888,7 +3888,7 @@ main{width:100%;height:100%}
   }
 
   function refreshAgentIdentity() {
-    if (agentGreeting) agentGreeting.textContent = 'Conocerte mejor con Nova';
+    if (agentGreeting) agentGreeting.textContent = 'Nova';
   }
 
   function clearListeningWatchdog() {
