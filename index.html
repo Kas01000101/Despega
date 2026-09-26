@@ -2620,6 +2620,7 @@ main{width:100%;height:100%}
 </style>
   <link rel="stylesheet" href="./src/styles/nova-avatar.css">
   <link rel="stylesheet" href="./src/styles/onboarding-layout.css">
+  <link rel="stylesheet" href="./src/styles/dashboard.css">
 
 </head>
 <body>
@@ -3185,53 +3186,9 @@ main{width:100%;height:100%}
       </section>
     </section>
 
-    <!-- DASHBOARD / RUTA -->
-    <section id="dashboardView" class="dashboard-view" data-view="dashboard" hidden>
-      <header class="dashboard-header">
-        <div class="dashboard-brand">DESPEGA</div>
-        <div class="dashboard-account">
-          <span class="dashboard-account-dot" aria-hidden="true"></span>
-          <span id="dashboardAccountName">Tu cuenta</span>
-        </div>
-      </header>
-
-      <main class="dashboard-shell" aria-labelledby="dashboardTitle">
-        <section class="dashboard-welcome">
-          <div>
-            <span class="dashboard-eyebrow">TU RUTA</span>
-            <h1 id="dashboardTitle">Hola, <span id="dashboardFirstName">bienvenido</span></h1>
-            <p>Tu perfil ya está listo. Aquí puedes revisar lo que nos contaste y continuar desde un solo lugar.</p>
-          </div>
-          <div class="dashboard-status-pill">Perfil listo</div>
-        </section>
-
-        <section class="dashboard-grid">
-          <article class="dashboard-card dashboard-card-primary">
-            <span class="dashboard-card-kicker">Siguiente paso</span>
-            <h2>Explora opciones relacionadas con tus intereses</h2>
-            <p>DESPEGA te mostrará alternativas para que compares requisitos, duración y próximos pasos antes de elegir.</p>
-            <button id="dashboardExploreButton" class="dashboard-action" type="button">Explorar opciones</button>
-          </article>
-
-          <article class="dashboard-card">
-            <span class="dashboard-card-kicker">Tu situación</span>
-            <h2 id="dashboardEducation">Información educativa</h2>
-            <p id="dashboardSituation">Tu información del onboarding aparecerá aquí.</p>
-          </article>
-
-          <article class="dashboard-card">
-            <span class="dashboard-card-kicker">Lo que le contaste a Nova</span>
-            <h2>Intereses y fortalezas</h2>
-            <div id="dashboardProfileChips" class="dashboard-chips"></div>
-          </article>
-
-          <article class="dashboard-card">
-            <span class="dashboard-card-kicker">Tu progreso</span>
-            <h2>Onboarding completado</h2>
-            <p id="dashboardProgressText">Tus respuestas quedaron guardadas para esta sesión.</p>
-          </article>
-        </section>
-      </main>
+    <!-- DASHBOARD V2 -->
+    <section id="dashboardView" class="dashboard-view dd-v2" data-view="dashboard" hidden>
+      <div id="despegaDashboardApp" aria-label="Dashboard DESPEGA"></div>
     </section>
 
   </main>
@@ -7471,5 +7428,6 @@ main{width:100%;height:100%}
 })();
 </script>
 
+<script src="./src/dashboard/dashboard.js"></script>
 </body>
 </html>
