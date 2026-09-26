@@ -4145,6 +4145,76 @@ main{width:100%;height:100%}
     return result;
   }
 
+  function normalizeEvidenceText(value = '') {
+    return String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9ñ\s]/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function evidenceIsLiteral(evidence, transcript) {
+    const safeEvidence = normalizeEvidenceText(evidence);
+    const safeTranscript = normalizeEvidenceText(transcript);
+    return Boolean(safeEvidence && safeEvidence.length >= 2 && safeTranscript.includes(safeEvidence));
+  }
+
+  function validateAIResultEvidence(result, expectedRecordingId = '') {
+    if (!result || typeof result !== 'object') return null;
+
+    const transcript = String(result.transcript || '').trim();
+    const quality = String(result.transcription_quality || '').toLowerCase();
+    const recordingId = String(result.recording_id || '').trim();
+
+    if (!transcript || quality !== 'good') return null;
+    if (expectedRecordingId && recordingId !== expectedRecordingId) {
+      console.warn('[NOVA AUDIO] stale_result_recording_id', {
+        expectedRecordingId,
+        receivedRecordingId: recordingId
+      });
+      return null;
+    }
+
+    const safe = { ...result, transcript };
+    const fields = ['goals','interests','skills','experience','barriers','training_needs'];
+
+    for (const field of fields) {
+      const rows = Array.isArray(result[field]) ? result[field] : [];
+      safe[field] = rows.filter((item) =>
+        item &&
+        typeof item === 'object' &&
+        String(item.value || '').trim() &&
+        evidenceIsLiteral(item.evidence, transcript)
+      );
+    }
+
+    safe.barrier_details = (Array.isArray(result.barrier_details) ? result.barrier_details : [])
+      .filter((item) =>
+        item &&
+        typeof item === 'object' &&
+        String(item.description || '').trim() &&
+        evidenceIsLiteral(item.source_evidence, transcript)
+      );
+
+    safe.evidence = Array.from(new Set(
+      fields.flatMap((field) => safe[field].map((item) => String(item.evidence || '').trim()).filter(Boolean))
+    ));
+
+    const backed = new Set();
+    if (safe.goals.length) backed.add('goal');
+    if (safe.interests.length) backed.add('interests');
+    if (safe.skills.length) backed.add('skills');
+    if (safe.experience.length) backed.add('experience');
+    if (safe.barriers.length) backed.add('barriers');
+
+    safe.covered_dimensions = (Array.isArray(result.covered_dimensions) ? result.covered_dimensions : [])
+      .filter((dimension) => backed.has(String(dimension || '')));
+
+    return safe;
+  }
+
   function mergeAIProfile(result) {
     const base = { ...loadPriorProfile(), ...interview.profile };
     for (const field of ['goals','interests','skills','experience','barriers','training_needs']) {
@@ -4159,7 +4229,7 @@ main{width:100%;height:100%}
   // -------- Memoria conversacional de Nova --------
   // Se conserva localmente para que Nova recuerde lo ya dicho incluso si se recarga la página.
   // Nunca guardamos el audio en el historial: solo pregunta, transcripción, resumen y reacción.
-  const NOVA_HISTORY_LIMIT = 12;
+  const NOVA_HISTORY_LIMIT = 3;
 
   function saveConversationHistory() {
     interview.conversationHistory = (Array.isArray(interview.conversationHistory) ? interview.conversationHistory : []).slice(-NOVA_HISTORY_LIMIT);
@@ -5597,8 +5667,8 @@ main{width:100%;height:100%}
       });
       setInterviewBusy(false);
       novaTurnLog('processing_end', { questionId: queueItem.questionId, recordingId });
-      await receiveAIResult(result);
-      console.log('[NOVA AUDIO] turn_completed', { recordingId });
+      const accepted = await receiveAIResult(result, recordingId);
+      if (accepted) console.log('[NOVA AUDIO] turn_completed', { recordingId });
     } catch (error) {
       if (error?.name === 'AbortError') {
         console.log('[NOVA] request aborted');
@@ -5655,11 +5725,11 @@ main{width:100%;height:100%}
     aiInsights.innerHTML = '';
 
     const categoryMap = [
-      interview.profile?.goals,
-      interview.profile?.interests,
-      interview.profile?.skills,
-      interview.profile?.experience,
-      interview.profile?.barriers
+      result?.goals,
+      result?.interests,
+      result?.skills,
+      result?.experience,
+      result?.barriers
     ];
 
     const labels = [];
@@ -5848,12 +5918,30 @@ main{width:100%;height:100%}
     if (currentStep !== 'step3') return;
     await resumeListeningAfterSpeech('next_question');
   }
-  async function receiveAIResult(result) {
-    if (currentStep !== 'step3') return;
+  async function receiveAIResult(result, expectedRecordingId = '') {
+    if (currentStep !== 'step3') return false;
+
+    const validatedResult = validateAIResultEvidence(result, expectedRecordingId);
+    if (!validatedResult) {
+      console.warn('[NOVA AI] rejected_unvalidated_result', {
+        expectedRecordingId,
+        receivedRecordingId: result?.recording_id || '',
+        quality: result?.transcription_quality || ''
+      });
+      showNovaNotice(
+        'No pude validar esa respuesta',
+        'Toca el micrófono para intentarlo otra vez.',
+        'error'
+      );
+      resetForRecording();
+      return false;
+    }
+
+    result = validatedResult;
 
     if (isControlIntent(result)) {
       await handleControlIntent(result);
-      return;
+      return true;
     }
 
     applyDimensionUpdates(result);
@@ -5901,6 +5989,7 @@ main{width:100%;height:100%}
     )).trim();
 
     await advanceInterviewAutomatically(result, reaction);
+    return true;
   }
 
   function resetForRecording() {
@@ -5972,7 +6061,7 @@ main{width:100%;height:100%}
         const result = await callDespegaAI(row.blob, row);
         await idbDeleteVoice(row.id);
         if (currentStep === 'step3' && row.sessionId === interview.sessionId && row.questionId === interview.questionId) {
-          await receiveAIResult(result);
+          await receiveAIResult(result, row.recordingId || row.id || '');
         }
       } catch (error) {
         if (error?.name !== 'AbortError') console.error('[NOVA QUEUE]', error);
