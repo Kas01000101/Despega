@@ -73,6 +73,7 @@ function isAllowedOrigin(origin: string | null) {
   if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)) return true;
   if (/^https:\/\/despega(?:-[a-z0-9-]+)?\.vercel\.app$/i.test(origin)) return true;
   if (/^https:\/\/despega(?:-[a-z0-9-]+)?\.netlify\.app$/i.test(origin)) return true;
+  if (/^https:\/\/kas01000101\.github\.io$/i.test(origin)) return true;
   return configuredOrigins().has(origin);
 }
 
