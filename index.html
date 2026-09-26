@@ -4731,15 +4731,21 @@ main{width:100%;height:100%}
     form.append('conversation_history', JSON.stringify((requestMeta.conversationHistory || interview.conversationHistory || []).slice(-3)));
     form.append('current_example', requestMeta.currentExample || interview.currentExample || '');
     form.append('duration_ms', String(Number.isFinite(requestMeta.durationMs) ? requestMeta.durationMs : (interview.lastRecordingDurationMs || 0)));
+    form.append('recording_id', requestMeta.recordingId || requestMeta.id || '');
     form.append('onboarding_data', JSON.stringify(loadPriorProfile()));
     form.append('dimension_status', JSON.stringify(requestMeta.dimensionStatus || interview.dimensionStatus || defaultDimensionStatus()));
 
-    console.log('[NOVA] sending to Supabase', {
+    console.log('[NOVA AUDIO] api_send', {
+      recordingId: requestMeta.recordingId || requestMeta.id || '',
       questionId: requestMeta.questionId || interview.questionId,
       bytes: audioBlob.size,
       usefulAnswers: Number.isFinite(requestMeta.usefulAnswersCount) ? requestMeta.usefulAnswersCount : interview.usefulAnswersCount
     });
-    novaTurnLog('api_send', { questionId: requestMeta.questionId || interview.questionId, bytes: audioBlob.size });
+    novaTurnLog('api_send', {
+      recordingId: requestMeta.recordingId || requestMeta.id || '',
+      questionId: requestMeta.questionId || interview.questionId,
+      bytes: audioBlob.size
+    });
 
     try {
       const response = await fetch(`${DESPEGA_AI.supabaseUrl}/functions/v1/${DESPEGA_AI.functionName}`, {
