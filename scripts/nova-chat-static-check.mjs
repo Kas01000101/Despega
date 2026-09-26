@@ -1,6 +1,6 @@
-
 import fs from 'node:fs';
 const chat=fs.readFileSync('src/dashboard/nova-chat.js','utf8');
+const dashboard=fs.readFileSync('src/dashboard/dashboard.js','utf8');
 const edge=fs.readFileSync('supabase/functions/despega-ai/index.ts','utf8');
 const html=fs.readFileSync('index.html','utf8');
 const checks=[
@@ -11,8 +11,10 @@ const checks=[
  ['chat rate limit independent',edge.includes('CHAT_RATE_LIMIT_PER_MINUTE')&&edge.includes('allowChatRequest')],
  ['chat tables persistence',edge.includes('nova_chat_sessions')&&edge.includes('nova_chat_messages')&&edge.includes('nova_chat_diagnostics')],
  ['skills/experience rule',edge.includes('HABILIDAD =')&&edge.includes('EXPERIENCIA =')],
- ['actions allowlist',edge.includes('CHAT_ALLOWED_ACTIONS')&&edge.includes('CHAT_ALLOWED_VIEWS')],
- ['idempotency',edge.includes('findExistingChatReply')&&edge.includes('reply_to_message_id')],
+ ['rich chat schema',edge.includes('message_type')&&edge.includes('referenced_resource_ids')&&edge.includes('motivation')&&edge.includes('cards')],
+ ['verified catalog context',dashboard.includes("verification:{status:'verified'")&&chat.includes('verification:o.verification&&o.verification.status')],
+ ['route context',dashboard.includes('getRoute:function()')&&chat.includes('route:route')],
+ ['idempotency metadata',edge.includes('findExistingChatReply')&&edge.includes('reply_to_message_id')&&edge.includes('metadata')],
  ['timeout',chat.includes('CHAT_TIMEOUT_MS=18000')],
  ['retry',chat.includes('novaRetry')],
  ['new conversation',chat.includes('newConversation')],
