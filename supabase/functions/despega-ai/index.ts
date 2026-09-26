@@ -11,7 +11,7 @@ const MAX_EXAMPLE_CHARS = 1500;
 const MAX_HISTORY_TURNS = 2;
 const MAX_PROFILE_ITEMS = 30;
 const MAX_BARRIER_DETAILS = 12;
-const RATE_LIMIT_PER_MINUTE = 20;
+const RATE_LIMIT_PER_MINUTE = 30;
 const MODEL = Deno.env.get("GEMINI_MODEL") || "gemini-3.8-flash";
 const FALLBACK_MODEL = Deno.env.get("GEMINI_FALLBACK_MODEL") || "gemini-3.5-flash-lite";
 const GEMINI_TIMEOUTS = Object.freeze({
@@ -184,6 +184,28 @@ function evidenceAppearsInTranscript(evidence: unknown, transcript: string) {
     normalizedEvidence.length >= 2 &&
     normalizedTranscript.includes(normalizedEvidence)
   );
+}
+
+function detectExplicitControlIntent(value: unknown) {
+  const normalized = normalizeForEvidence(value);
+  if (!normalized || normalized.length > 120) return "";
+
+  if (/^(repite|repitela|repitelo|otra vez|que me preguntaste|cual era la pregunta)$/.test(normalized)) {
+    return "repeat_question";
+  }
+  if (/^(repite el ejemplo|otro ejemplo|dame el ejemplo otra vez)$/.test(normalized)) {
+    return "repeat_example";
+  }
+  if (/^(no entendi|no entiendo|que significa|que quieres decir|que paso|dime que paso)$/.test(normalized)) {
+    return "explain_question";
+  }
+  if (/^(pausa|espera|un momento|quiero pausar)$/.test(normalized)) {
+    return "pause";
+  }
+  if (/^(paso|saltar|saltala|prefiero no responder|no quiero responder)$/.test(normalized)) {
+    return "skip_question";
+  }
+  return "";
 }
 
 function meaningfulEvidenceTokens(value: unknown) {
@@ -529,8 +551,8 @@ async function callGeminiResilient(args: {
   const phase = args.phase || "analysis";
   const attempts = phase === "transcription"
     ? [
-        { model: FALLBACK_MODEL, timeoutMs: GEMINI_TIMEOUTS.transcriptionFast, label: "primary_fast" },
-        { model: MODEL, timeoutMs: GEMINI_TIMEOUTS.transcriptionFallback, label: "fallback_quality" },
+        { model: MODEL, timeoutMs: GEMINI_TIMEOUTS.transcriptionFallback, label: "primary_quality" },
+        { model: FALLBACK_MODEL, timeoutMs: GEMINI_TIMEOUTS.transcriptionFast, label: "fallback_fast" },
       ]
     : [
         { model: FALLBACK_MODEL, timeoutMs: GEMINI_TIMEOUTS.analysisFast, label: "primary_fast" },
@@ -798,6 +820,8 @@ Transcribe literalmente este audio hablado en español.
 
 REGLAS OBLIGATORIAS:
 - Devuelve exactamente lo que escuchas.
+- No omitas las palabras finales aunque haya pausas naturales dentro de la respuesta.
+- Conserva repeticiones, autocorrecciones y fragmentos tal como fueron pronunciados.
 - No respondas al contenido.
 - No interpretes intención, objetivos, intereses ni habilidades.
 - No uses contexto de conversaciones anteriores.
@@ -957,6 +981,12 @@ Construir un perfil breve usando SOLO estas 5 dimensiones:
 4. experience: experiencia formal o informal.
 5. barriers: barreras actuales.
 
+DISTINCIÓN OBLIGATORIA ENTRE HABILIDAD Y EXPERIENCIA:
+- skills describe capacidades o cosas que la persona siente que sabe hacer bien. Una respuesta breve en infinitivo a la pregunta de habilidades, como "organizar reuniones", "dibujar" o "usar una computadora", es una habilidad; NO la conviertas en experiencia solo porque describe una acción.
+- experience describe algo que la persona ya hizo en un contexto real, proyecto, ayuda, trabajo formal o informal, normalmente expresado como un hecho o antecedente.
+- La PREGUNTA ACTUAL es una señal fuerte para interpretar respuestas breves, salvo que la propia transcripción contenga evidencia explícita de otra dimensión.
+- Una misma evidencia no debe copiarse a skills y experience por defecto. Solo usa ambas cuando la transcripción explícitamente sostenga ambas ideas.
+
 MAPA OFICIAL:
 ${JSON.stringify(QUESTION_MAP)}
 
@@ -1095,6 +1125,8 @@ Devuelve solo el JSON solicitado por el schema.
     result.transcription_quality = transcriptionQuality;
     result.recording_id = recordingId;
     result.turn_intent = VALID_INTENTS.has(String(result.turn_intent)) ? String(result.turn_intent) : "answer";
+    const explicitControlIntent = detectExplicitControlIntent(transcript);
+    if (explicitControlIntent) result.turn_intent = explicitControlIntent;
     result.answer_sufficiency = VALID_SUFFICIENCY.has(String(result.answer_sufficiency))
       ? String(result.answer_sufficiency)
       : "sufficient";
@@ -1159,7 +1191,7 @@ Devuelve solo el JSON solicitado por el schema.
       const nonAnswer = !transcript
         || /^(no|no sé|no se|ninguno|ninguna|prefiero no responder|paso)$/i.test(normalizedTranscript);
 
-      if (!nonAnswer && (result.interests.length > 0 || transcript.length >= 3)) {
+      if (!nonAnswer && result.interests.length > 0) {
         result.answer_sufficiency = "sufficient";
         result.clarification_needed = false;
         if (!result.covered_dimensions.includes("interests")) result.covered_dimensions.push("interests");

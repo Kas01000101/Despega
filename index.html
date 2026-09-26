@@ -3285,7 +3285,7 @@ main{width:100%;height:100%}
     minAudioBytes: 256,
     vadCalibrationMs: 400,
     vadSpeechStartMs: 120,
-    vadSilenceMs: 1500,
+    vadSilenceMs: 2800,
     vadNoSpeechMs: 8000,
     vadPostTtsDelayMs: 250,
     vadReadyTimeoutMs: 1800,
@@ -3295,7 +3295,7 @@ main{width:100%;height:100%}
     vadThresholdMax: 0.065,
     vadNoiseMultiplier: 1.8,
     vadNoiseOffset: 0.003,
-    vadContinueRatio: 0.72,
+    vadContinueRatio: 0.58,
     vadDebugIntervalMs: 350,
     maxInterviewQuestions: 5,
     targetInterviewQuestions: 5,
@@ -3938,6 +3938,14 @@ main{width:100%;height:100%}
   const INITIAL_QUESTION = NOVA_QUESTIONS.goal.question;
   const INITIAL_EXAMPLE = NOVA_QUESTIONS.goal.example;
 
+  const NOVA_CLARIFICATIONS = Object.freeze({
+    goal: 'Si tuvieras que elegir un primer cambio, ¿qué te gustaría lograr primero?',
+    interests: 'Piensa en una actividad o tema que disfrutas. ¿Cuál te llama más la atención?',
+    skills: 'Piensa en algo para lo que otras personas suelen pedirte ayuda. ¿Qué se te da bien?',
+    experience: '¿Recuerdas alguna actividad, proyecto o ayuda que hayas hecho antes?',
+    barriers: '¿Qué dificultad concreta sientes que te frena más en este momento?'
+  });
+
   function defaultDimensionStatus() {
     return Object.fromEntries(NOVA_CORE_DIMENSIONS.map((dimension) => [dimension, 'pending']));
   }
@@ -3954,6 +3962,21 @@ main{width:100%;height:100%}
     } catch {
       return defaultDimensionStatus();
     }
+  }
+
+  function loadAskedCount() {
+    const counts = Object.fromEntries(NOVA_CORE_DIMENSIONS.map((dimension) => [dimension, 0]));
+    try {
+      const stored = JSON.parse(localStorage.getItem('despegaInterviewAskedCount') || '{}');
+      for (const dimension of NOVA_CORE_DIMENSIONS) {
+        counts[dimension] = Math.max(0, Math.min(3, Number(stored?.[dimension] || 0)));
+      }
+    } catch {}
+    return counts;
+  }
+
+  function persistAskedCount() {
+    localStorage.setItem('despegaInterviewAskedCount', JSON.stringify(interview.askedCount));
   }
 
   const interview = {
@@ -4022,12 +4045,13 @@ main{width:100%;height:100%}
     listenRecoveryAttempts: 0,
     listenWatchdog: null,
     processingWatchdog: null,
-    askedCount: Object.fromEntries(NOVA_CORE_DIMENSIONS.map((dimension) => [dimension, 0]))
+    askedCount: loadAskedCount()
   };
 
   localStorage.setItem('despegaInterviewSession', interview.sessionId);
   if (NOVA_DIMENSION_SET.has(interview.questionId)) {
     interview.askedCount[interview.questionId] = Math.max(1, Number(interview.askedCount[interview.questionId] || 0));
+    persistAskedCount();
   }
 
   const playExampleButton = $('#playExampleButton');
@@ -4807,6 +4831,7 @@ main{width:100%;height:100%}
       'despegaInterviewUsefulAnswers',
       'despegaInterviewMainQuestions',
       'despegaInterviewClarifications',
+      'despegaInterviewAskedCount',
       'despegaCurrentQuestionId',
       'despegaCurrentQuestion',
       'despegaCurrentExample',
@@ -4853,10 +4878,13 @@ main{width:100%;height:100%}
     interview.activeRequestRecordingId = null;
     interview.isSendingAudio = false;
     interview.processedRecordingIds.clear();
+    interview.askedCount = Object.fromEntries(NOVA_CORE_DIMENSIONS.map((dimension) => [dimension, 0]));
+    interview.askedCount.goal = 1;
 
     localStorage.setItem('despegaInterviewSession', sessionId);
     localStorage.setItem('despegaInterviewMainQuestions', '1');
     localStorage.setItem('despegaInterviewClarifications', '0');
+    persistAskedCount();
     localStorage.setItem('despegaCurrentQuestionId', interview.questionId);
     localStorage.setItem('despegaCurrentQuestion', interview.currentQuestion);
     localStorage.setItem('despegaCurrentExample', interview.currentExample);
@@ -6604,15 +6632,19 @@ main{width:100%;height:100%}
               'Tu progreso sigue guardado. Nova volverá a escucharte automáticamente.',
               'supportive'
             );
-            setVoiceStatus('Volveré a escucharte automáticamente.', 'ok');
+            setVoiceStatus('Necesito escucharte una vez más.', 'ok');
 
-            await new Promise(resolve => setTimeout(resolve, 450));
+            const retryMessage = error?.code === 'NO_SPEECH_DETECTED'
+              ? 'No alcancé a escuchar una respuesta. Voy a intentarlo una vez más. Cuando veas Escuchando, repite tu respuesta.'
+              : 'No alcancé a escuchar tu respuesta completa. Voy a intentarlo una vez más. Cuando veas Escuchando, repítela desde el inicio.';
+            await speakText(retryMessage, false)
+              .catch((speechError) => console.warn('[NOVA AUDIO] quality_retry_tts_failed', speechError));
             if (
               currentStep === 'step3' &&
               processingLifecycle === interview.lifecycleId &&
               interview.autoListenEnabled
             ) {
-              await resumeListeningAfterSpeech('quality_no_speech_retry');
+              await resumeListeningAfterSpeech('quality_retry_after_notice');
             }
             return;
           }
@@ -6891,7 +6923,7 @@ main{width:100%;height:100%}
       const mapped = NOVA_QUESTIONS[nextDimension] || NOVA_QUESTIONS.goal;
       const sameDimension = nextDimension === currentDimension;
       nextQuestion = sameDimension
-        ? (String(result?.clarification_question || result?.rephrased_question || '').trim() || mapped.question)
+        ? (NOVA_CLARIFICATIONS[nextDimension] || mapped.question)
         : mapped.question;
       nextExample = String(result?.example_response || '').trim() || mapped.example;
       setAgentEmotion(sameDimension ? 'curious' : normalizeNovaEmotion(result));
@@ -6932,6 +6964,7 @@ main{width:100%;height:100%}
 
     interview.questionId = nextDimension;
     interview.askedCount[nextDimension] = Number(interview.askedCount[nextDimension] || 0) + 1;
+    persistAskedCount();
     interview.currentQuestion = nextQuestion;
     interview.currentExample = nextExample;
     localStorage.setItem('despegaCurrentQuestionId', interview.questionId);
@@ -7152,20 +7185,33 @@ main{width:100%;height:100%}
         continue;
       }
 
-      setInterviewBusy(true);
-      setAgentState('processing');
-      setVoiceStatus('Analizando…', 'processing');
+      setInterviewBusy(true, 'transcription');
+      setVoiceStatus('Procesando tu voz guardada…', 'processing');
 
       try {
-        const result = await callDespegaAI(row.blob, row);
-        await idbDeleteVoice(row.id);
+        const transcriptionResult = await callDespegaAI(row.blob, {
+          ...row,
+          mode: 'transcribe'
+        });
+        const queuedTranscript = String(transcriptionResult?.transcript || '').trim();
+        if (!queuedTranscript) throw new Error('EMPTY_QUEUED_TRANSCRIPT');
+
+        setInterviewBusy(true, 'analysis');
+        setVoiceStatus('Entendiendo tu respuesta guardada…', 'processing');
+        const result = await callDespegaAI(null, {
+          ...row,
+          mode: 'analyze',
+          transcriptOverride: queuedTranscript
+        });
+
         if (currentStep === 'step3' && row.sessionId === interview.sessionId && row.questionId === interview.questionId) {
-          await receiveAIResult(
+          const accepted = await receiveAIResult(
             result,
             row.recordingId || row.id || '',
             row.questionId,
             interview.lifecycleId
           );
+          if (accepted) await idbDeleteVoice(row.id);
         }
       } catch (error) {
         if (error?.name !== 'AbortError') console.error('[NOVA QUEUE]', error);
